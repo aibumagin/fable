@@ -1,0 +1,192 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Напиши что угодно · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--mute:#a09c8f;--acc:#ffd84d;--line:rgba(242,238,227,.16)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{touch-action:none;position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;color:var(--mute);max-width:66ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a{border:1px solid var(--line);background:rgba(12,12,11,.55);color:var(--ink);padding:9px 14px;border-radius:999px;
+  font-weight:500;font-size:13.5px;line-height:1;text-decoration:none;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);transition:border-color .15s}
+.nav a:hover{border-color:rgba(242,238,227,.5)}
+.stat{position:fixed;z-index:5;left:28px;bottom:22px;color:var(--mute);font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;pointer-events:none}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Напиши что угодно</h1>
+    <p>14 000 частиц складываются в ваши слова. Печатайте с клавиатуры, расталкивайте частицы мышью, кликните – будет взрыв. Enter очищает.</p>
+  </div>
+  <nav class="nav"><a href="os.html">← Назад</a><a href="index.html">Все демо</a><a href="watch.html">Дальше →</a></nav>
+</div>
+<div class="stat" id="stat"></div>
+<script>
+// Фразы вступления. Можно заменить через адрес: particles.html?t=первая|вторая|третья
+const INTRO = (new URLSearchParams(location.search).get('t') ||
+  'привет!|я Fable 5.2|AI да Бумагин!|один файл, ноль библиотек|теперь печатай ты').split('|');
+
+const N = 14000;
+const FONT = '"Helvetica Neue",Helvetica,Arial,sans-serif';
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const off = document.createElement('canvas'), octx = off.getContext('2d', {willReadFrequently: true});
+const px = new Float32Array(N), py = new Float32Array(N), vx = new Float32Array(N), vy = new Float32Array(N);
+const tx = new Float32Array(N), ty = new Float32Array(N), seed = new Float32Array(N);
+const order = new Uint32Array(N), pick = new Uint32Array(N), sel = new Float32Array(N * 2);
+let W = 0, H = 0, D = 1, text = '', hasTarget = false;
+let mx = -1e5, my = -1e5, mdown = false;
+
+function layout(str) {
+  const words = str.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) return [];
+  const total = words.join(' ').length;
+  const maxLines = total > 26 ? 3 : total > 12 ? 2 : 1;
+  const target = Math.ceil(total / maxLines);
+  const lines = []; let cur = '';
+  for (const w of words) {
+    if (cur && (cur + ' ' + w).length > target + 2 && lines.length < maxLines - 1) { lines.push(cur); cur = w; }
+    else cur = cur ? cur + ' ' + w : w;
+  }
+  if (cur) lines.push(cur);
+  return lines;
+}
+
+function setText(str) {
+  text = str;
+  const lines = layout(str);
+  if (!lines.length) { hasTarget = false; return; }
+  const s = 0.5, w = off.width = Math.max(2, W * s | 0), h = off.height = Math.max(2, H * s | 0);
+  octx.clearRect(0, 0, w, h);
+  let fs = 200;
+  octx.font = `800 ${fs}px ${FONT}`;
+  let mw = 1;
+  for (const l of lines) mw = Math.max(mw, octx.measureText(l).width);
+  fs = Math.min(fs * (w * 0.84) / mw, (h * 0.56) / (lines.length * 1.08));
+  octx.font = `800 ${fs}px ${FONT}`;
+  octx.textAlign = 'center'; octx.textBaseline = 'middle'; octx.fillStyle = '#fff';
+  const lh = fs * 1.08, y0 = h * 0.55 - (lines.length - 1) * lh / 2;
+  lines.forEach((l, i) => octx.fillText(l, w / 2, y0 + i * lh));
+  const data = octx.getImageData(0, 0, w, h).data, pts = [];
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) if (data[(y * w + x) * 4 + 3] > 128) pts.push(x, y);
+  const cnt = pts.length / 2;
+  if (!cnt) { hasTarget = false; return; }
+  for (let i = 0; i < N; i++) {
+    const k = (Math.random() * cnt | 0) * 2;
+    sel[i * 2] = (pts[k] + Math.random()) / s; sel[i * 2 + 1] = (pts[k + 1] + Math.random()) / s;
+    order[i] = i; pick[i] = i;
+  }
+  // Левые частицы летят к левым точкам: слово перетекает, а не перемешивается.
+  pick.sort((a, b) => sel[a * 2] - sel[b * 2]);
+  order.sort((a, b) => px[a] - px[b]);
+  for (let i = 0; i < N; i++) { const p = order[i], q = pick[i]; tx[p] = sel[q * 2]; ty[p] = sel[q * 2 + 1]; }
+  hasTarget = true;
+}
+
+function resize() {
+  const first = !W;
+  D = Math.min(2, devicePixelRatio || 1);
+  W = cv.width = Math.round(innerWidth * D); H = cv.height = Math.round(innerHeight * D);
+  if (first) for (let i = 0; i < N; i++) {
+    px[i] = Math.random() * W; py[i] = Math.random() * H; seed[i] = Math.random() * 6.283;
+    vx[i] = (Math.random() - .5) * 2; vy[i] = (Math.random() - .5) * 2;
+  }
+  setText(text);
+}
+
+function step() {
+  const t = performance.now() * 0.001, mr = 120 * D, mr2 = mr * mr, push = (mdown ? 10 : 3.4) * D;
+  const k = 0.026, damp = hasTarget ? 0.85 : 0.965, inv = 1 / D;
+  for (let i = 0; i < N; i++) {
+    let x = px[i], y = py[i], ax, ay;
+    if (hasTarget) {
+      ax = (tx[i] - x) * k + Math.sin(t * 1.7 + seed[i]) * 0.03 * D;
+      ay = (ty[i] - y) * k + Math.cos(t * 1.3 + seed[i] * 2) * 0.03 * D;
+    } else {
+      const a = Math.sin(x * 0.0022 * inv + t * 0.3 + seed[i] * .15) * 2 + Math.cos(y * 0.0027 * inv - t * 0.23) * 2;
+      ax = Math.cos(a) * 0.07 * D; ay = Math.sin(a) * 0.07 * D;
+    }
+    const dx = x - mx, dy = y - my, d2 = dx * dx + dy * dy;
+    if (d2 < mr2) { const d = Math.sqrt(d2) + 0.01, f = 1 - d / mr, s = f * f * push; ax += dx / d * s; ay += dy / d * s; }
+    const nvx = (vx[i] + ax) * damp, nvy = (vy[i] + ay) * damp;
+    x += nvx; y += nvy;
+    if (!hasTarget) { if (x < 0) x += W; else if (x > W) x -= W; if (y < 0) y += H; else if (y > H) y -= H; }
+    vx[i] = nvx; vy[i] = nvy; px[i] = x; py[i] = y;
+  }
+}
+
+function blast(x, y) {
+  const R = 340 * D;
+  for (let i = 0; i < N; i++) {
+    const dx = px[i] - x, dy = py[i] - y, d = Math.hypot(dx, dy) + 0.01;
+    if (d < R) { const f = (1 - d / R) * (26 + Math.random() * 22) * D; vx[i] += dx / d * f; vy[i] += dy / d * f; }
+  }
+}
+
+function draw() {
+  ctx.fillStyle = '#0c0c0b'; ctx.fillRect(0, 0, W, H);
+  const s = 1.7 * D, hot = 9 * D * D;
+  ctx.fillStyle = 'rgba(242,238,227,.92)'; ctx.beginPath();
+  for (let i = 0; i < N; i++) if (vx[i] * vx[i] + vy[i] * vy[i] <= hot) ctx.rect(px[i], py[i], s, s);
+  ctx.fill();
+  ctx.fillStyle = '#ffd84d'; ctx.beginPath();
+  for (let i = 0; i < N; i++) if (vx[i] * vx[i] + vy[i] * vy[i] > hot) ctx.rect(px[i], py[i], s, s);
+  ctx.fill();
+}
+
+// Вступление: фразы сменяют друг друга, пока человек не начал печатать сам.
+let introOn = true, introI = 0, introTimer = 0, buf = '';
+function nextIntro() {
+  if (!introOn) return;
+  setText(INTRO[introI]);
+  if (introI < INTRO.length - 1) { introI++; introTimer = setTimeout(nextIntro, 2600); }
+}
+function stopIntro() { if (introOn) { introOn = false; clearTimeout(introTimer); buf = ''; } }
+
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Enter') { stopIntro(); buf = ''; setText(''); blast(W / 2, H / 2); e.preventDefault(); }
+  else if (e.key === 'Backspace') { stopIntro(); buf = buf.slice(0, -1); setText(buf); e.preventDefault(); }
+  else if (e.key.length === 1) { stopIntro(); buf = (buf + e.key).slice(-60); setText(buf); e.preventDefault(); }
+});
+addEventListener('paste', e => {
+  const s = (e.clipboardData.getData('text') || '').replace(/\s+/g, ' ').trim();
+  if (s) { stopIntro(); buf = s.slice(0, 60); setText(buf); }
+});
+cv.addEventListener('pointermove', e => { mx = e.clientX * D; my = e.clientY * D; });
+cv.addEventListener('pointerleave', () => { mx = my = -1e5; });
+cv.addEventListener('pointerdown', e => { mdown = true; mx = e.clientX * D; my = e.clientY * D; blast(mx, my); });
+addEventListener('pointerup', () => { mdown = false; });
+addEventListener('resize', resize);
+
+const stat = document.getElementById('stat');
+let last = performance.now(), acc = 0, frames = 0, fpsT = last;
+function frame(now) {
+  acc += Math.min(50, now - last); last = now;
+  let n = 0;
+  while (acc >= 16.6 && n < 3) { step(); acc -= 16.6; n++; }
+  if (n === 3) acc = 0;
+  draw();
+  frames++;
+  if (now - fpsT > 500) {
+    stat.textContent = `14 000 частиц · ${Math.round(frames * 1000 / (now - fpsT))} кадров/с`;
+    frames = 0; fpsT = now;
+  }
+  requestAnimationFrame(frame);
+}
+resize();
+setTimeout(nextIntro, 500);
+requestAnimationFrame(frame);
+// ?shot – сразу собранная фраза, для обложки витрины
+if (location.search.includes('shot')) { stopIntro(); setText('я Fable 5.2'); for (let i = 0; i < 700; i++) step(); for (let i = 0; i < N; i++) { vx[i] = vy[i] = 0; } }
+</script>
+</body>
+</html>

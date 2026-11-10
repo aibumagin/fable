@@ -1,0 +1,185 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Двенадцать живых демо · Fable 5.2</title>
+<meta name="description" content="Двенадцать интерактивных демо, которые Claude Fable 5.2 написала по одной просьбе. Каждое – один HTML-файл без библиотек и картинок. Открывайте с компьютера.">
+<meta property="og:title" content="Двенадцать живых демо от Fable 5.2">
+<meta property="og:description" content="Чёрная дыра, океан, нейросеть, рабочий стол в браузере. Каждое демо – один HTML-файл. Открывайте с компьютера.">
+<meta property="og:type" content="website">
+<style>
+:root{
+  --bg:#09090a;--panel:#111112;--panel2:#161617;--ink:#f3efe6;--mute:#8f8b82;--dim:#5d5a54;
+  --line:rgba(243,239,230,.09);--line2:rgba(243,239,230,.16);--gold:#e9c46a;--gold2:#f6dfa0;
+  --serif:Charter,"Iowan Old Style","PT Serif",Georgia,ui-serif,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.55 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit;text-decoration:none}
+/* свет и зерно */
+.glow{position:absolute;inset:0 0 auto;height:900px;pointer-events:none;z-index:0;
+  background:radial-gradient(60% 55% at 70% 0%,rgba(233,196,106,.13),transparent 70%),radial-gradient(40% 40% at 10% 20%,rgba(120,140,255,.06),transparent 70%)}
+.grain{position:fixed;inset:0;pointer-events:none;z-index:100;opacity:.07;mix-blend-mode:overlay;
+  background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E")}
+.wrap{position:relative;z-index:1;max-width:1360px;margin:0 auto;padding:0 48px}
+
+/* шапка */
+.top{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:28px 0}
+.mark{display:flex;align-items:center;gap:12px;font:500 13px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase;color:var(--mute)}
+.mark i{width:22px;height:22px;border-radius:7px;background:conic-gradient(from 210deg,var(--gold),#b8873a,var(--gold2),var(--gold));box-shadow:0 0 24px rgba(233,196,106,.35)}
+.mark b{color:var(--ink);font-weight:500}
+.tg{display:inline-flex;align-items:center;gap:10px;padding:11px 18px 11px 14px;border-radius:999px;border:1px solid rgba(233,196,106,.38);
+  background:linear-gradient(180deg,rgba(233,196,106,.12),rgba(233,196,106,.04));color:var(--gold2);font-weight:550;font-size:14.5px;transition:background .2s,border-color .2s,transform .2s}
+.tg:hover{background:rgba(233,196,106,.18);border-color:var(--gold);transform:translateY(-1px)}
+.tg svg{width:18px;height:18px;flex:none}
+
+/* первый экран */
+.hero{padding:96px 0 84px;display:grid;grid-template-columns:1.35fr 1fr;gap:64px;align-items:end;border-bottom:1px solid var(--line)}
+.eyebrow{display:flex;align-items:center;gap:12px;font:500 12.5px/1 var(--mono);letter-spacing:.16em;text-transform:uppercase;color:var(--gold)}
+.eyebrow::before{content:"";width:28px;height:1px;background:var(--gold)}
+h1{margin:28px 0 0;font:400 clamp(60px,8.4vw,132px)/.9 var(--serif);letter-spacing:-.045em}
+h1 em{font-style:italic;background:linear-gradient(100deg,var(--gold2),var(--gold) 45%,#c08b3c);-webkit-background-clip:text;background-clip:text;color:transparent;padding-right:.04em}
+.lede{margin:0;color:var(--mute);font-size:19px;line-height:1.55;max-width:44ch}
+.lede strong{color:var(--ink);font-weight:500}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);margin-top:36px;border-top:1px solid var(--line)}
+.stats div{padding:18px 0 0}
+.stats b{display:block;font:400 40px/1 var(--serif);letter-spacing:-.03em}
+.stats span{display:block;margin-top:8px;font:12px/1.3 var(--mono);color:var(--dim);letter-spacing:.04em}
+.desk{display:flex;align-items:center;gap:10px;margin-top:28px;font-size:14px;color:var(--mute)}
+.desk svg{width:18px;height:18px;flex:none;color:var(--gold)}
+.phone{display:none;margin-top:22px;padding:14px 16px;border:1px solid rgba(233,196,106,.35);border-radius:12px;background:rgba(233,196,106,.06);color:var(--gold2);font-size:15px}
+@media (hover:none),(max-width:760px){.phone{display:block}}
+
+/* сетка */
+.head{display:flex;justify-content:space-between;align-items:end;gap:24px;padding:72px 0 28px}
+.head h2{margin:0;font:400 40px/1 var(--serif);letter-spacing:-.025em}
+.head p{margin:0;color:var(--dim);font:13px/1 var(--mono);letter-spacing:.06em}
+.grid{display:grid;grid-template-columns:repeat(6,1fr);gap:20px}
+.card{grid-column:span 2;position:relative;display:flex;flex-direction:column;border-radius:20px;background:var(--panel);border:1px solid var(--line);overflow:hidden;
+  transition:border-color .35s,transform .35s cubic-bezier(.2,.8,.2,1),box-shadow .35s}
+.card.big{grid-column:span 3}
+.card:hover{border-color:rgba(233,196,106,.45);transform:translateY(-4px);box-shadow:0 30px 70px -30px rgba(0,0,0,.9),0 0 0 1px rgba(233,196,106,.12),0 20px 60px -30px rgba(233,196,106,.25)}
+.shot{position:relative;margin:8px 8px 0;border-radius:14px;overflow:hidden;background:#0b0b0b;aspect-ratio:16/9}
+.card.big .shot{aspect-ratio:16/8.2}
+.shot img{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;object-position:center 60%;display:block;transition:transform 1s cubic-bezier(.2,.8,.2,1),opacity .5s}
+.card:hover .shot img{transform:scale(1.04)}
+.shot iframe{position:absolute;left:0;top:0;width:1600px;height:900px;border:0;transform-origin:0 0;pointer-events:none;opacity:0;transition:opacity .6s}
+.shot iframe.on{opacity:1}
+.live{position:absolute;left:14px;top:14px;z-index:2;display:inline-flex;align-items:center;gap:7px;padding:6px 10px;border-radius:999px;background:rgba(9,9,10,.66);backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);
+  border:1px solid var(--line2);font:500 11px/1 var(--mono);letter-spacing:.1em;text-transform:uppercase;opacity:0;transition:opacity .3s}
+.live::before{content:"";width:6px;height:6px;border-radius:50%;background:#ff5a5a;box-shadow:0 0 0 3px rgba(255,90,90,.2)}
+.card.playing .live{opacity:1}
+.shot::after{content:"";position:absolute;inset:0;border-radius:14px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.06);background:linear-gradient(180deg,transparent 60%,rgba(0,0,0,.35));pointer-events:none}
+.go{position:absolute;right:14px;bottom:14px;z-index:2;display:inline-flex;align-items:center;gap:8px;padding:8px 13px;border-radius:999px;background:rgba(9,9,10,.72);
+  backdrop-filter:blur(10px);-webkit-backdrop-filter:blur(10px);border:1px solid var(--line2);font-size:13px;font-weight:550;opacity:0;transform:translateY(6px);transition:opacity .3s,transform .3s}
+.card:hover .go{opacity:1;transform:none}
+.info{padding:20px 22px 24px;display:flex;flex-direction:column;gap:8px}
+.meta{display:flex;justify-content:space-between;align-items:center;font:500 11.5px/1 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.meta span{color:var(--gold)}
+.meta i{font-style:normal;color:var(--dim)}
+.card h3{margin:4px 0 0;font:400 30px/1.05 var(--serif);letter-spacing:-.02em}
+.card.big h3{font-size:36px}
+.card p{margin:0;color:var(--mute);font-size:15px;line-height:1.5;max-width:46ch}
+
+/* подвал */
+.cta{margin:110px 0 0;padding:72px 64px;border-radius:28px;border:1px solid var(--line);position:relative;overflow:hidden;
+  background:radial-gradient(70% 120% at 100% 0%,rgba(233,196,106,.16),transparent 60%),var(--panel)}
+.cta h2{margin:0;max-width:22ch;font:400 clamp(40px,4.8vw,68px)/1 var(--serif);letter-spacing:-.035em}
+.cta h2 em{font-style:italic;color:var(--gold2)}
+.cta p{margin:20px 0 32px;color:var(--mute);font-size:18px;max-width:52ch}
+.cta .tg{padding:15px 24px 15px 18px;font-size:16px;background:var(--gold);color:#1a1408;border-color:var(--gold)}
+.cta .tg:hover{background:var(--gold2)}
+footer{display:flex;justify-content:space-between;gap:24px;padding:40px 0 56px;color:var(--dim);font:12.5px/1.5 var(--mono);letter-spacing:.03em}
+footer a{color:var(--mute)}footer a:hover{color:var(--gold2)}
+
+.rv{opacity:0;transform:translateY(24px);transition:opacity .9s cubic-bezier(.2,.8,.2,1),transform .9s cubic-bezier(.2,.8,.2,1)}
+.rv.in{opacity:1;transform:none}
+@media (max-width:1080px){.hero{grid-template-columns:1fr;gap:36px}.grid{grid-template-columns:repeat(2,1fr)}.card,.card.big{grid-column:span 1}}
+@media (max-width:680px){.wrap{padding:0 18px}.grid{grid-template-columns:1fr}.stats{grid-template-columns:repeat(2,1fr);row-gap:10px}.cta{padding:40px 24px}.tg span.long{display:none}footer{flex-direction:column}}
+</style>
+</head>
+<body>
+<div class="glow"></div><div class="grain"></div>
+<div class="wrap">
+  <header class="top">
+    <div class="mark"><i></i><span><b>Fable 5.2</b> · живые демо</span></div>
+    <a class="tg" href="https://t.me/aibumagin" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.4 4.6 2.9 11.7c-1.3.5-1.2 1.3-.2 1.6l4.7 1.5 1.8 5.6c.2.6.4.8.9.8.4 0 .6-.2.9-.4l2.3-2.2 4.7 3.5c.9.5 1.5.2 1.7-.8l3.1-14.6c.3-1.3-.5-1.9-1.4-1.5ZM9.2 14.4l9.2-5.8c.4-.3.8-.1.5.2l-7.6 6.9-.3 3.2-1.8-4.5Z"/></svg><span>Telegram <span class="long">· AI да Бумагин!</span></span></a>
+  </header>
+
+  <section class="hero">
+    <div>
+      <div class="eyebrow rv">Одна просьба · двенадцать результатов</div>
+      <h1 class="rv">Двенадцать <em>живых</em> демо</h1>
+    </div>
+    <div class="rv">
+      <p class="lede">Я дал Claude Fable 5.2 один ролик про неё же и попросил сделать что-то в том же духе. Без ТЗ и без макетов. <strong>Каждое демо – один HTML-файл</strong>: ни библиотек, ни сборки, ни единой картинки. Всё рисуется кодом и отзывается на мышь.</p>
+      <div class="stats">
+        <div><b>12</b><span>демо</span></div>
+        <div><b>1</b><span>файл на демо</span></div>
+        <div><b>0</b><span>библиотек</span></div>
+        <div><b>0</b><span>картинок в демо</span></div>
+      </div>
+      <div class="desk"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg>Лучше всего смотреть с компьютера: нужны мышь и клавиатура.</div>
+      <p class="phone">Демо сделаны для компьютера. Откройте эту страницу на ноутбуке – на телефоне часть из них не заработает.</p>
+    </div>
+  </section>
+
+  <div class="head"><h2 class="rv">Коллекция</h2><p class="rv">наведите на карточку – демо оживёт</p></div>
+  <div class="grid" id="grid"></div>
+
+  <section class="cta rv">
+    <h2>Больше таких разборов – <em>в Telegram</em></h2>
+    <p>Каждый день – свежие ИИ-инструменты, разборы и промпты, которые можно забрать себе. В том числе запрос, которым сделаны эти демо.</p>
+    <a class="tg" href="https://t.me/aibumagin" target="_blank" rel="noopener"><svg viewBox="0 0 24 24" fill="currentColor"><path d="M21.4 4.6 2.9 11.7c-1.3.5-1.2 1.3-.2 1.6l4.7 1.5 1.8 5.6c.2.6.4.8.9.8.4 0 .6-.2.9-.4l2.3-2.2 4.7 3.5c.9.5 1.5.2 1.7-.8l3.1-14.6c.3-1.3-.5-1.9-1.4-1.5ZM9.2 14.4l9.2-5.8c.4-.3.8-.1.5.2l-7.6 6.9-.3 3.2-1.8-4.5Z"/></svg>Подписаться на «AI да Бумагин!»</a>
+  </section>
+  <footer><span>Собрано Claude Fable 5.2 по просьбе Андрея Бумагина</span><span><a href="https://t.me/aibumagin" target="_blank" rel="noopener">t.me/aibumagin</a></span></footer>
+</div>
+
+<script>
+// [файл, раздел, название, описание, номер превью, большая карточка]
+const DEMOS = [
+  ['blackhole.html', 'Шейдер', 'Чёрная дыра', 'Свет огибает дыру по-настоящему: путь луча считается для каждого пикселя. Диск виден и сверху, и снизу.', 9, 1],
+  ['ocean.html', 'Шейдер', 'Открытый океан', 'Тяните солнце от полудня к лунной ночи. Колёсико поднимает волны от штиля до шторма.', 8, 1],
+  ['particles.html', 'Частицы', 'Напиши что угодно', '14 000 частиц складываются в слова, которые вы печатаете.', 0],
+  ['watch.html', 'Лендинг', 'Полдень', 'Механические часы целиком из кода. Стрелки идут по вашему времени, шестерни – по-настоящему.', 1],
+  ['shtil.html', 'Лендинг', 'Штиль', 'Сервис мониторинга с живыми графиками и глобусом.', 2],
+  ['flyover.html', 'Шейдер', 'Полёт', 'Бесконечные горы без единой 3D-модели. Рулите мышью, меняйте время суток.', 6, 1],
+  ['os.html', 'Система', 'Бумага OS', 'Рабочий стол внутри рабочего стола: окна, терминал, заметки, рисовалка и игра.', 11, 1],
+  ['patterns.html', 'Симуляция', 'Живые узоры', 'Два вещества реагируют на видеокарте. Стирайте – и смотрите, как зарастает.', 3],
+  ['fireworks.html', 'Частицы', 'Салют', 'Клик запускает залп. Напечатайте слово – напишет огнями.', 5],
+  ['cloth.html', 'Физика', 'Ткань', 'Тяните, режьте и рвите полотно на ветру.', 4],
+  ['chladni.html', 'Звук', 'Фигуры звука', 'Песок на дрожащей пластине собирается в узоры. Мышь меняет ноту.', 7, 1],
+  ['neural.html', 'ИИ', 'Нейросеть учится', 'Маленькая сеть учится прямо в браузере. Добавляйте точки и смотрите, как она перестраивается.', 10, 1]
+];
+const arrow = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>';
+document.getElementById('grid').innerHTML = DEMOS.map(([f, tag, title, d, sk, big], i) =>
+  `<a class="card rv${big ? ' big' : ''}" href="${f}"><div class="shot"><img src="shots/${f.replace('.html', '.jpg')}" alt="${title}" loading="${i < 2 ? 'eager' : 'lazy'}" decoding="async"><span class="live">вживую</span><span class="go">Открыть ${arrow}</span></div>
+   <div class="info"><div class="meta"><span>${tag}</span><i>${String(i + 1).padStart(2, '0')} / 12</i></div><h3>${title}</h3><p>${d}</p></div></a>`).join('');
+
+// При наведении внутри карточки запускается само демо – по одному за раз, чтобы не грузить видеокарту.
+const io = new IntersectionObserver(es => es.forEach(e => { if (e.isIntersecting) { e.target.classList.add('in'); io.unobserve(e.target); } }), {threshold: .08});
+document.querySelectorAll('.rv').forEach((e, i) => { e.style.transitionDelay = (i % 3) * 90 + 'ms'; io.observe(e); });
+const canHover = matchMedia('(hover:hover) and (pointer:fine)').matches;
+let live = null, timer = 0;
+function stopLive() { clearTimeout(timer); if (live) { live.card.classList.remove('playing'); live.frame.remove(); live = null; } }
+function fitLive() { if (!live) return; const box = live.card.querySelector('.shot'); live.frame.style.transform = `scale(${box.clientWidth / 1600})`; live.frame.style.top = (box.clientHeight - 900 * box.clientWidth / 1600) / 2 + 'px'; }
+if (canHover) document.querySelectorAll('.card').forEach(card => {
+  card.addEventListener('pointerenter', () => {
+    stopLive();
+    timer = setTimeout(() => {
+      const fr = document.createElement('iframe');
+      fr.src = card.getAttribute('href'); fr.tabIndex = -1; fr.setAttribute('aria-hidden', 'true'); fr.setAttribute('scrolling', 'no');
+      fr.addEventListener('load', () => setTimeout(() => { if (live && live.frame === fr) { fr.classList.add('on'); card.classList.add('playing'); } }, 350));
+      card.querySelector('.shot').appendChild(fr); live = {card, frame: fr}; fitLive();
+    }, 280);
+  });
+  card.addEventListener('pointerleave', stopLive);
+});
+addEventListener('resize', fitLive);
+</script>
+</body>
+</html>

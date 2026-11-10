@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Открытый океан · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--mute:#cfcabb;--acc:#ffd84d;--line:rgba(242,238,227,.22)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{touch-action:none;position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
+canvas:active{cursor:grabbing}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.45)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;color:var(--ink);max-width:66ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a{border:1px solid var(--line);background:rgba(12,12,11,.45);color:var(--ink);padding:9px 14px;border-radius:999px;
+  font-weight:500;font-size:13.5px;line-height:1;text-decoration:none;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px);text-shadow:none}
+.nav a:hover{border-color:rgba(242,238,227,.6)}
+.stat{position:fixed;z-index:5;left:28px;bottom:22px;color:var(--ink);font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;pointer-events:none;text-shadow:0 1px 10px rgba(0,0,0,.6)}
+.err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:40px;text-align:center;color:var(--mute)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Открытый океан</h1>
+    <p>Тяните мышью – двигается солнце: от полудня через закат в лунную ночь. Колёсико поднимает волны от штиля до шторма.</p>
+  </div>
+  <nav class="nav"><a href="chladni.html">← Назад</a><a href="index.html">Все демо</a><a href="blackhole.html">Дальше →</a></nav>
+</div>
+<div class="stat" id="stat"></div>
+<div class="err" id="err">Этому демо нужен WebGL 2. Откройте его в свежем Chrome или Safari.</div>
+<script id="fs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+uniform vec2 R;
+uniform float T, WH, NIGHT;
+uniform vec3 S, M;
+out vec4 O;
+
+float hash(vec2 p){ vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float noise(vec2 p){
+  vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+}
+float fbm(vec2 p){ float a = .5, s = 0.; for (int i = 0; i < 4; i++) { s += a * noise(p); p = p * 2.03 + 17.; a *= .5; } return s; }
+
+// Сумма бегущих волн. exp(sin) заостряет гребни, сдвиг точки делает волну «заваленной».
+float waves(vec2 p, int n){
+  float s = 0., w = 0., amp = 1., fr = .15, ang = .35;
+  float chop = .16 + .1 * smoothstep(.5, 5., WH);
+  for (int i = 0; i < n; i++) {
+    vec2 d = vec2(cos(ang), sin(ang));
+    float x = dot(d, p) * fr + T * sqrt(9.8 * fr);
+    float e = exp(sin(x) - 1.);
+    p += d * e * cos(x) * amp * chop / fr * .12;
+    s += e * amp; w += amp;
+    amp *= .82; fr *= 1.19; ang += 2.39996;
+  }
+  return s / w;
+}
+
+vec3 sky(vec3 rd){
+  float y = max(rd.y, 0.);
+  float day = 1. - NIGHT;
+  float low = (1. - smoothstep(0., .42, abs(S.y))) * smoothstep(-.3, .02, S.y);
+  vec3 zen = mix(vec3(.006, .012, .035), vec3(.10, .30, .70), day);
+  vec3 hor = mix(vec3(.02, .035, .075), vec3(.60, .76, .94), day);
+  hor = mix(hor, vec3(1., .40, .10), low * .9);
+  zen = mix(zen, vec3(.16, .18, .42), low * .55);
+  vec3 c = mix(hor, zen, pow(y, .45));
+  float sd = max(dot(rd, S), 0.);
+  vec3 sc = mix(vec3(1., .34, .07), vec3(1., .96, .86), smoothstep(.02, .4, S.y));
+  float up = smoothstep(-.1, .0, S.y);
+  c += sc * (pow(sd, 5.) * .32 * low + pow(sd, 48.) * .35 + pow(sd, 1500.) * 30.) * up;
+  // луна и звёзды
+  float md = max(dot(rd, M), 0.);
+  c += vec3(.78, .86, 1.) * (pow(md, 30.) * .10 + pow(md, 400.) * .5 + smoothstep(.99965, .9998, md) * 5.) * NIGHT;
+  vec2 sp = rd.xz / (y + .25) * 190.;
+  float st = hash(floor(sp));
+  c += vec3(.8, .88, 1.) * smoothstep(.992, 1., st) * (.5 + .5 * sin(T * 2. + st * 90.)) * NIGHT * smoothstep(.02, .3, y);
+  // облака
+  vec2 cp = rd.xz / (y + .16) * 1.25 + vec2(T * .012, 0.);
+  float cl = smoothstep(.52, .9, fbm(cp) + .16 * smoothstep(.5, 5., WH));
+  vec3 cc = mix(vec3(.9, .92, .96) * day + vec3(.05, .06, .09), sc * 1.05, low * .7 * pow(sd, 2.));
+  c = mix(c, cc * (.35 + .65 * day + .25 * NIGHT), cl * .75 * smoothstep(.0, .18, y));
+  return c;
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy * 2. - R) / R.y;
+  float D = WH * 1.25;
+  vec3 ro = vec3(0., 2.4 + WH * .8 + .25 * sin(T * .7) * WH * .3, 0.);
+  vec3 f = normalize(vec3(0., -.07, 1.)), r = normalize(cross(vec3(0, 1, 0), f)), u = cross(f, r);
+  vec3 rd = normalize(f * 1.45 + r * uv.x + u * uv.y);
+  vec3 col;
+  if (rd.y >= -.0005) col = sky(rd);
+  else {
+    float t = -ro.y / rd.y, t1 = (-D - ro.y) / rd.y, k = 1. / max(-rd.y, .22);
+    for (int i = 0; i < 52; i++) {
+      vec3 p = ro + rd * t;
+      float d = p.y - (waves(p.xz, 9) - 1.) * D;
+      if (d < .003 * t || t > t1) break;
+      t += d * k * .62;
+    }
+    vec3 p = ro + rd * t;
+    float e = max(.03, .0018 * t);
+    float h0 = waves(p.xz, 22), hx = waves(p.xz + vec2(e, 0), 22), hz = waves(p.xz + vec2(0, e), 22);
+    vec3 n = normalize(vec3((h0 - hx) * D, e, (h0 - hz) * D));
+    n = normalize(mix(n, vec3(0, 1, 0), smoothstep(60., 1400., t) * .82));
+    float day = 1. - NIGHT;
+    float fres = .02 + .98 * pow(1. - max(dot(n, -rd), 0.), 5.);
+    vec3 rf = reflect(rd, n); rf.y = abs(rf.y) + .002;
+    vec3 rc = sky(normalize(rf));
+    vec3 deep = mix(vec3(.0, .010, .026), vec3(.008, .075, .12), day);
+    vec3 sss = vec3(.02, .30, .26) * day * (.25 + .75 * smoothstep(.35, 1., h0));
+    col = mix(deep + sss * .5, rc, fres);
+    float foam = smoothstep(.80, .99, h0) * smoothstep(1.4, 4.5, WH) * fbm(p.xz * 1.6 + T * .25);
+    col = mix(col, vec3(.92, .95, .97) * (.16 + .84 * day), clamp(foam * 1.5, 0., 1.));
+    vec3 hz3 = sky(normalize(vec3(rd.x, .012, rd.z)));
+    col = mix(col, hz3, 1. - exp(-t * .0013));
+  }
+  col = col * (2.51 * col + .03) / (col * (2.43 * col + .59) + .14);   // сжатие яркости
+  col = pow(clamp(col, 0., 1.), vec3(.4545));
+  col *= 1. - .22 * dot(uv * .55, uv * .55);
+  O = vec4(col, 1.);
+}
+</script>
+<script>
+const cv = document.getElementById('c'), gl = cv.getContext('webgl2', {antialias: false, powerPreference: 'high-performance'});
+const stat = document.getElementById('stat');
+if (!gl) document.getElementById('err').style.display = 'flex';
+else {
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; };
+  const pr = gl.createProgram();
+  gl.attachShader(pr, sh(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){gl_Position=vec4(vec2(gl_VertexID&1,gl_VertexID>>1)*4.-1.,0,1);}'));
+  gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, document.getElementById('fs').textContent));
+  gl.linkProgram(pr); gl.useProgram(pr);
+  const U = n => gl.getUniformLocation(pr, n);
+  const uR = U('R'), uT = U('T'), uWH = U('WH'), uN = U('NIGHT'), uS = U('S'), uM = U('M');
+
+  let el = 0.2, az = 0.12, wh = 1.8, whT = 1.8, elT = 0.2, azT = 0.12;   // высота солнца, азимут, высота волн
+  let scale = 1, ema = 16, lastChange = 0, locked = false;
+  function resize() {
+    const d = Math.min(1.25, devicePixelRatio || 1) * scale;
+    cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d);
+    gl.viewport(0, 0, cv.width, cv.height);
+  }
+  addEventListener('resize', resize); resize();
+
+  let drag = false, lx = 0, ly = 0;
+  cv.addEventListener('pointerdown', e => { drag = true; lx = e.clientX; ly = e.clientY; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e => {
+    if (!drag) return;
+    azT = Math.max(-.75, Math.min(.75, azT + (e.clientX - lx) * .0022));
+    elT = Math.max(-.5, Math.min(1.15, elT - (e.clientY - ly) * .0032));
+    lx = e.clientX; ly = e.clientY;
+  });
+  cv.addEventListener('pointerup', () => drag = false);
+  addEventListener('wheel', e => { whT = Math.max(.3, Math.min(6, whT - e.deltaY * .004)); e.preventDefault(); }, {passive: false});
+
+  const dir = (a, e) => [Math.sin(a) * Math.cos(e), Math.sin(e), Math.cos(a) * Math.cos(e)];
+  const ru = n => n.toLocaleString('ru-RU', {minimumFractionDigits: 1, maximumFractionDigits: 1});
+  let last = performance.now(), t = 0, frames = 0, fpsT = last, fps = 60;
+  function frame(now) {
+    const dt = Math.min(100, now - last); last = now; t += dt / 1000;
+    el += (elT - el) * .12; az += (azT - az) * .12; wh += (whT - wh) * .06;
+    const night = Math.min(1, Math.max(0, (0.03 - el) / 0.17));
+    const mel = Math.max(-.25, Math.min(1.05, -el * 2.1 - .08));
+    gl.uniform2f(uR, cv.width, cv.height); gl.uniform1f(uT, t); gl.uniform1f(uWH, wh); gl.uniform1f(uN, night * night * (3 - 2 * night));
+    gl.uniform3fv(uS, dir(az, el)); gl.uniform3fv(uM, dir(az, mel));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    // подстройка разрешения под видеокарту
+    ema += (dt - ema) * .06;
+    if (now - lastChange > 1500) {
+      if (ema > 21 && scale > .45) { scale = Math.max(.45, scale - .1); if (scale < 1) locked = locked || scale < .95; lastChange = now; ema = 16; resize(); }
+      else if (ema < 17.6 && scale < 1 && !locked && now - lastChange > 4000) { scale = Math.min(1, scale + .1); lastChange = now; resize(); }
+    }
+    frames++;
+    if (now - fpsT > 500) {
+      fps = Math.round(frames * 1000 / (now - fpsT)); frames = 0; fpsT = now;
+      const deg = Math.round(Math.abs(el) * 57.2958);
+      const sun = el >= 0.03 ? `Солнце ${deg}° над горизонтом` : `Ночь, солнце ${deg}° под горизонтом`;
+      stat.textContent = `${sun} · волны ${ru(wh)} м · ${fps} кадров/с · ${cv.width}×${cv.height}`;
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>

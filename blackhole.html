@@ -1,0 +1,189 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Чёрная дыра · Fable 5.2</title>
+<style>
+:root{--bg:#050505;--ink:#f2eee3;--mute:#a09c8f;--acc:#ffd84d;--line:rgba(242,238,227,.2)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{touch-action:none;position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
+canvas:active{cursor:grabbing}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;color:var(--mute);max-width:66ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(5,5,5,.55);color:var(--ink);padding:9px 14px;border-radius:999px;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.6)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stat{color:var(--mute);font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px}
+.err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:40px;text-align:center;color:var(--mute)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Чёрная дыра</h1>
+    <p>Это не картинка: для каждого пикселя считается путь луча света в искривлённом пространстве. Поэтому диск позади дыры виден сверху и снизу сразу. Тяните – облёт, колёсико – ближе и дальше.</p>
+  </div>
+  <nav class="nav"><a href="ocean.html">← Назад</a><a href="index.html">Все демо</a><a href="neural.html">Дальше →</a></nav>
+</div>
+<div class="bar">
+  <button class="pill on" id="bDisk">Диск</button>
+  <button class="pill on" id="bDop">Эффект Доплера</button>
+  <button class="pill on" id="bAuto">Облёт сам</button>
+  <span class="stat" id="stat"></span>
+</div>
+<div class="err" id="err">Этому демо нужен WebGL 2. Откройте его в свежем Chrome или Safari.</div>
+<script id="fs" type="x-shader/x-fragment">#version 300 es
+precision highp float;
+uniform vec2 R;
+uniform float T, DISK, DOP;
+uniform vec3 RO;
+out vec4 O;
+const float RIN = 2.6, ROUT = 13.;
+
+float hash(vec2 p){ vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+vec3 hash3(vec3 p){ p = fract(p * vec3(.1031, .1030, .0973)); p += dot(p, p.yxz + 33.33); return fract((p.xxy + p.yxx) * p.zyx); }
+float noise(vec2 p){
+  vec2 i = floor(p), f = fract(p); f = f * f * (3. - 2. * f);
+  return mix(mix(hash(i), hash(i + vec2(1, 0)), f.x), mix(hash(i + vec2(0, 1)), hash(i + vec2(1, 1)), f.x), f.y);
+}
+float fbm(vec2 p){ float a = .5, s = 0.; for (int i = 0; i < 5; i++) { s += a * noise(p); p = p * 2.1 + 9.; a *= .5; } return s; }
+
+vec3 stars(vec3 d){
+  vec3 c = vec3(0.);
+  for (int l = 0; l < 3; l++) {
+    float K = 26. + float(l) * 34.;
+    vec3 q = d * K, id = floor(q), h = hash3(id + float(l) * 7.);
+    vec3 f = q - id - .5 - (h - .5) * .5;
+    float b = smoothstep(.011, 0., dot(f, f)) * step(.5, h.z);
+    c += b * mix(vec3(1., .82, .62), vec3(.68, .82, 1.), h.y) * (.6 + 2.6 * h.x * h.x);
+  }
+  float band = exp(-pow(dot(d, normalize(vec3(.35, .9, .2))) * 3.2, 2.));
+  c += vec3(.30, .34, .52) * band * (.12 + .5 * fbm(d.xz * 5. + d.y * 3.)) * .5;
+  return c;
+}
+
+// свечение диска в точке p; v – направление луча (мы идём от камеры, свет летит навстречу)
+vec4 disk(vec3 p, vec3 v){
+  float r = length(p.xz);
+  if (r < RIN || r > ROUT) return vec4(0.);
+  float x = RIN / r;
+  float I = pow(x, 1.9) * (1. - sqrt(x) * .9) * 26.;
+  float ang = atan(p.z, p.x), w = sqrt(.5 / (r * r * r)) * 14.;
+  float t1 = fract(T / 16.), t2 = fract(T / 16. + .5);
+  float a1 = ang - w * t1 * 16., a2 = ang - w * t2 * 16.;
+  float n1 = fbm(vec2(cos(a1), sin(a1)) * r * .55 + r * 1.3), n2 = fbm(vec2(cos(a2), sin(a2)) * r * .55 + r * 1.3 + 31.);
+  float n = mix(n1, n2, abs(1. - 2. * t1));
+  float streak = .4 + 1.5 * n * n + .1 * sin(r * 4. + n * 9.);
+  float vk = sqrt(.5 / r);
+  vec3 tang = vec3(-p.z, 0., p.x) / r;
+  float dopp = 1. / ((1. - vk * dot(tang, -normalize(v))) / sqrt(1. - vk * vk));
+  float g = mix(1., dopp * sqrt(1. - 1. / r), DOP);
+  float temp = pow(x, .75) * g;
+  vec3 c = mix(vec3(1., .36, .08), vec3(1., .84, .58), clamp(temp * 1.7 - .2, 0., 1.));
+  c = mix(c, vec3(.78, .88, 1.), clamp(temp * 1.2 - .9, 0., 1.));
+  float b = I * streak * pow(g, 3.);
+  float a = clamp(b * .9, 0., 1.) * smoothstep(ROUT, ROUT * .72, r) * smoothstep(RIN, RIN * 1.12, r);
+  return vec4(c * b, a);
+}
+
+void main(){
+  vec2 uv = (gl_FragCoord.xy * 2. - R) / R.y;
+  vec3 f = normalize(-RO), r = normalize(cross(vec3(0, 1, 0), f)), u = cross(f, r);
+  vec3 x = RO, v = normalize(f * 1.7 + r * uv.x + u * uv.y);
+  vec3 hv = cross(x, v); float h2 = dot(hv, hv);
+  vec3 col = vec3(0.); float tr = 1.;
+  float far = length(RO) * 1.3 + 6.;
+  bool fell = false;
+  for (int i = 0; i < 260; i++) {
+    float rr = length(x);
+    if (rr < 1.) { fell = true; break; }
+    if (rr > far && dot(x, v) > 0.) break;
+    float dt = clamp(.11 * (rr - .75), .025, 2.2);
+    v += -1.5 * h2 * x / pow(rr, 5.) * dt;      // так гравитация гнёт луч
+    vec3 nx = x + v * dt;
+    if (DISK > .5 && x.y * nx.y < 0.) {
+      vec4 d = disk(mix(x, nx, x.y / (x.y - nx.y)), v);
+      col += tr * d.rgb * d.a; tr *= 1. - d.a * .88;
+    }
+    x = nx;
+  }
+  if (!fell) col += tr * stars(normalize(v));
+  col = 1. - exp(-col * 1.1);
+  col = pow(col, vec3(.4545));
+  col *= 1. - .25 * dot(uv * .5, uv * .5);
+  O = vec4(col, 1.);
+}
+</script>
+<script>
+const cv = document.getElementById('c'), gl = cv.getContext('webgl2', {antialias: false, powerPreference: 'high-performance'});
+const stat = document.getElementById('stat');
+if (!gl) document.getElementById('err').style.display = 'flex';
+else {
+  const sh = (type, src) => { const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(s)); return s; };
+  const pr = gl.createProgram();
+  gl.attachShader(pr, sh(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){gl_Position=vec4(vec2(gl_VertexID&1,gl_VertexID>>1)*4.-1.,0,1);}'));
+  gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, document.getElementById('fs').textContent));
+  gl.linkProgram(pr); gl.useProgram(pr);
+  const U = n => gl.getUniformLocation(pr, n);
+  const uR = U('R'), uT = U('T'), uRO = U('RO'), uDisk = U('DISK'), uDop = U('DOP');
+
+  let az = 0.6, inc = 0.14, dist = 24, azT = az, incT = inc, distT = dist;
+  let disk = true, dop = true, auto = true;
+  const tog = (id, fn) => document.getElementById(id).addEventListener('click', e => e.currentTarget.classList.toggle('on', fn()));
+  tog('bDisk', () => disk = !disk); tog('bDop', () => dop = !dop); tog('bAuto', () => auto = !auto);
+
+  let scale = 1, ema = 16, lastChange = 0, locked = false;
+  function resize() {
+    const d = Math.min(1.5, devicePixelRatio || 1) * scale;
+    cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d);
+    gl.viewport(0, 0, cv.width, cv.height);
+  }
+  addEventListener('resize', resize); resize();
+
+  let drag = false, lx = 0, ly = 0;
+  cv.addEventListener('pointerdown', e => { drag = true; lx = e.clientX; ly = e.clientY; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e => {
+    if (!drag) return;
+    azT -= (e.clientX - lx) * .006;
+    incT = Math.max(-1.45, Math.min(1.45, incT + (e.clientY - ly) * .005));
+    lx = e.clientX; ly = e.clientY;
+  });
+  cv.addEventListener('pointerup', () => drag = false);
+  addEventListener('wheel', e => { distT = Math.max(8, Math.min(48, distT * Math.exp(e.deltaY * .0012))); e.preventDefault(); }, {passive: false});
+
+  let last = performance.now(), t = 0, frames = 0, fpsT = last;
+  function frame(now) {
+    const dt = Math.min(100, now - last); last = now; t += dt / 1000;
+    if (auto && !drag) azT += dt * .00007;
+    az += (azT - az) * .1; inc += (incT - inc) * .1; dist += (distT - dist) * .1;
+    gl.uniform2f(uR, cv.width, cv.height); gl.uniform1f(uT, t);
+    gl.uniform1f(uDisk, disk ? 1 : 0); gl.uniform1f(uDop, dop ? 1 : 0);
+    gl.uniform3f(uRO, dist * Math.cos(inc) * Math.sin(az), dist * Math.sin(inc), dist * Math.cos(inc) * Math.cos(az));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    ema += (dt - ema) * .06;
+    if (now - lastChange > 1500) {
+      if (ema > 21 && scale > .4) { scale = Math.max(.4, scale - .1); locked = true; lastChange = now; ema = 16; resize(); }
+      else if (ema < 17.6 && scale < 1 && !locked && now - lastChange > 4000) { scale = Math.min(1, scale + .1); lastChange = now; resize(); }
+    }
+    frames++;
+    if (now - fpsT > 500) {
+      stat.textContent = `до 260 шагов по лучу на пиксель · ${Math.round(frames * 1000 / (now - fpsT))} кадров/с · ${cv.width}×${cv.height}`;
+      frames = 0; fpsT = now;
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>

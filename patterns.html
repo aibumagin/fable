@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Живые узоры · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--mute:#b9b5a8;--acc:#ffd84d;--line:rgba(242,238,227,.22)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{touch-action:none;position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 10px rgba(0,0,0,.7)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;color:var(--mute);max-width:66ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(12,12,11,.6);color:var(--ink);padding:9px 14px;border-radius:999px;text-shadow:none;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.6)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.gap{width:14px}
+.stat{color:var(--mute);font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px;text-shadow:0 1px 8px #000}
+.err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:40px;text-align:center;color:var(--mute)}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Живые узоры</h1>
+    <p>Два вещества реагируют и растекаются – всё считается на видеокарте. Ведите мышью, чтобы посеять новое. С зажатым Shift мышь стирает. Внизу – рецепты.</p>
+  </div>
+  <nav class="nav"><a href="shtil.html">← Назад</a><a href="index.html">Все демо</a><a href="cloth.html">Дальше →</a></nav>
+</div>
+<div class="bar" id="bar"></div>
+<div class="err" id="err">Этому демо нужен WebGL 2 с плавающими текстурами. Откройте его в свежем Chrome или Safari.</div>
+<script>
+const VS = `#version 300 es
+out vec2 uv; void main(){ vec2 p = vec2(gl_VertexID & 1, gl_VertexID >> 1) * 2.; uv = p; gl_Position = vec4(p * 2. - 1., 0, 1); }`;
+// Модель Грея – Скотта: A кормит B, B съедает A и размножается, оба растекаются с разной скоростью.
+const SIM = `#version 300 es
+precision highp float;
+uniform sampler2D S; uniform vec2 px; uniform float F, K, BM; uniform vec3 B;
+in vec2 uv; out vec4 O;
+void main(){
+  vec2 c = texture(S, uv).rg;
+  vec2 l = -c
+    + .2 * (texture(S, uv + vec2(px.x, 0)).rg + texture(S, uv - vec2(px.x, 0)).rg + texture(S, uv + vec2(0, px.y)).rg + texture(S, uv - vec2(0, px.y)).rg)
+    + .05 * (texture(S, uv + px).rg + texture(S, uv - px).rg + texture(S, uv + vec2(px.x, -px.y)).rg + texture(S, uv + vec2(-px.x, px.y)).rg);
+  float r = c.r * c.g * c.g;
+  vec2 n = c + vec2(l.r - r + F * (1. - c.r), .5 * l.g + r - (K + F) * c.g);
+  if (BM != 0.) { vec2 d = (uv - B.xy) / px; if (dot(d, d) < B.z * B.z) n = BM > 0. ? vec2(.45, .55) : vec2(1., 0.); }
+  O = vec4(clamp(n, 0., 1.), 0, 1);
+}`;
+const SHOW = `#version 300 es
+precision highp float;
+uniform sampler2D S; uniform vec2 px; uniform vec3 C0, C1, C2, C3;
+in vec2 uv; out vec4 O;
+void main(){
+  float v = texture(S, uv).g;
+  float dx = texture(S, uv + vec2(px.x, 0)).g - texture(S, uv - vec2(px.x, 0)).g;
+  float dy = texture(S, uv + vec2(0, px.y)).g - texture(S, uv - vec2(0, px.y)).g;
+  vec3 n = normalize(vec3(-dx * 7., -dy * 7., 1.));
+  float lit = max(dot(n, normalize(vec3(-.5, .6, .65))), 0.), k = smoothstep(.04, .3, v);
+  vec3 col = mix(C0, C1, smoothstep(.03, .16, v));
+  col = mix(col, C2, smoothstep(.16, .3, v));
+  col = mix(col, C3, smoothstep(.3, .44, v));
+  col *= mix(1., .55 + .7 * lit, k);
+  col += pow(lit, 30.) * .3 * k;
+  vec2 q = uv - .5; col *= 1. - .5 * dot(q, q);
+  O = vec4(col, 1);
+}`;
+const hex = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16) / 255);
+const PRESETS = [
+  {n: 'Кораллы', f: .0545, k: .062, seeds: 14, pal: ['#0a0f26', '#b3214a', '#ff7f7a', '#fff1dc']},
+  {n: 'Митоз', f: .03, k: .0625, seeds: 4, pal: ['#07091c', '#3a2a8e', '#9a86ff', '#f3eeff']},
+  {n: 'Лабиринт', f: .029, k: .057, seeds: 40, pal: ['#081510', '#1d6b49', '#7fe0a0', '#f5ffe9']},
+  {n: 'Пятна', f: .03, k: .0625, seeds: 70, pal: ['#140c05', '#9a4a12', '#ffb24d', '#fff6d8']},
+  {n: 'Волны', f: .014, k: .045, seeds: 24, pal: ['#04121a', '#0f5d73', '#58d2e0', '#effdff']}
+];
+const cv = document.getElementById('c'), gl = cv.getContext('webgl2', {antialias: false});
+const okExt = gl && (gl.getExtension('EXT_color_buffer_float') || gl.getExtension('EXT_color_buffer_half_float'));
+if (!okExt) document.getElementById('err').style.display = 'flex';
+else {
+  const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(o)); return o; };
+  const prog = fs => { const p = gl.createProgram(); gl.attachShader(p, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(p, sh(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); return p; };
+  const pSim = prog(SIM), pShow = prog(SHOW);
+  const u = (p, n) => gl.getUniformLocation(p, n);
+  let sw = 0, sh2 = 0, tex = [], fbo = [], cur = 0, preset = 0, paused = false, STEPS = 14;
+  function makeTargets() {
+    sw = Math.min(1100, Math.round(innerWidth / 2)); sh2 = Math.round(sw * innerHeight / innerWidth);
+    for (let i = 0; i < 2; i++) {
+      tex[i] = gl.createTexture(); gl.bindTexture(gl.TEXTURE_2D, tex[i]);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, sw, sh2, 0, gl.RGBA, gl.FLOAT, null);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.REPEAT); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.REPEAT);
+      fbo[i] = gl.createFramebuffer(); gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[i]);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex[i], 0);
+    }
+    seed();
+  }
+  function seed() {
+    const d = new Float32Array(sw * sh2 * 4);
+    for (let i = 0; i < sw * sh2; i++) d[i * 4] = 1;
+    for (let s = 0; s < PRESETS[preset].seeds; s++) {
+      const cx = Math.random() * sw | 0, cy = (.14 + Math.random() * .72) * sh2 | 0, r = 3 + Math.random() * 4 | 0;
+      for (let y = -r; y <= r; y++) for (let x = -r; x <= r; x++) if (x * x + y * y <= r * r) {
+        const i = (((cy + y + sh2) % sh2) * sw + (cx + x + sw) % sw) * 4; d[i] = .45; d[i + 1] = .6;
+      }
+    }
+    gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA16F, sw, sh2, 0, gl.RGBA, gl.FLOAT, d);
+  }
+  function resize() { const d = Math.min(2, devicePixelRatio || 1); cv.width = innerWidth * d; cv.height = innerHeight * d; makeTargets(); }
+  addEventListener('resize', resize);
+
+  let mx = 0, my = 0, down = false, erase = false;
+  cv.addEventListener('pointerdown', e => { down = true; erase = e.shiftKey || e.button === 2; mx = e.clientX; my = e.clientY; cv.setPointerCapture(e.pointerId); });
+  cv.addEventListener('pointermove', e => { mx = e.clientX; my = e.clientY; erase = e.shiftKey || (e.buttons & 2) > 0; });
+  cv.addEventListener('pointerup', () => down = false);
+  cv.addEventListener('contextmenu', e => e.preventDefault());
+
+  const bar = document.getElementById('bar');
+  bar.innerHTML = PRESETS.map((p, i) => `<button class="pill${i ? '' : ' on'}" data-p="${i}">${p.n}</button>`).join('') +
+    '<span class="gap"></span><button class="pill" data-a="seed">Пересеять</button><button class="pill" data-a="pause">Пауза</button><span class="stat" id="stat"></span>';
+  bar.addEventListener('click', e => {
+    const b = e.target.closest('button'); if (!b) return;
+    if (b.dataset.p) { preset = +b.dataset.p; bar.querySelectorAll('[data-p]').forEach(x => x.classList.toggle('on', x === b)); seed(); }
+    else if (b.dataset.a === 'seed') seed();
+    else { paused = !paused; b.classList.toggle('on', paused); }
+  });
+  const stat = document.getElementById('stat');
+  let frames = 0, fpsT = performance.now();
+  function frame(now) {
+    const P = PRESETS[preset];
+    if (!paused) {
+      gl.useProgram(pSim); gl.viewport(0, 0, sw, sh2);
+      gl.uniform2f(u(pSim, 'px'), 1 / sw, 1 / sh2); gl.uniform1f(u(pSim, 'F'), P.f); gl.uniform1f(u(pSim, 'K'), P.k);
+      gl.uniform3f(u(pSim, 'B'), mx / innerWidth, 1 - my / innerHeight, erase ? 16 : 5);
+      for (let i = 0; i < STEPS; i++) {
+        gl.uniform1f(u(pSim, 'BM'), down && i === 0 ? (erase ? -1 : 1) : 0);
+        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo[1 - cur]); gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+        gl.drawArrays(gl.TRIANGLES, 0, 3); cur = 1 - cur;
+      }
+    }
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null); gl.viewport(0, 0, cv.width, cv.height);
+    gl.useProgram(pShow); gl.bindTexture(gl.TEXTURE_2D, tex[cur]);
+    gl.uniform2f(u(pShow, 'px'), 1 / sw, 1 / sh2);
+    P.pal.forEach((c, i) => gl.uniform3fv(u(pShow, 'C' + i), hex(c)));
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    frames++;
+    if (now - fpsT > 500) { stat.textContent = `${sw}×${sh2} клеток · ${STEPS} шагов реакции за кадр · ${Math.round(frames * 1000 / (now - fpsT))} кадров/с`; frames = 0; fpsT = now; }
+    requestAnimationFrame(frame);
+  }
+  resize(); requestAnimationFrame(frame);
+  if (location.search.includes('shot')) { const raf0 = window.requestAnimationFrame; window.requestAnimationFrame = () => 0; for (let i = 0; i < 1400; i++) frame(performance.now()); window.requestAnimationFrame = raf0; }
+}
+</script>
+</body>
+</html>

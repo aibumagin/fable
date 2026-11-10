@@ -1,0 +1,205 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Полёт · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--acc:#ffd84d;--line:rgba(242,238,227,.3)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{touch-action:none;position:fixed;inset:0;width:100%;height:100%;display:block}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.55)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;max-width:66ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(12,12,11,.5);color:var(--ink);padding:9px 14px;border-radius:999px;text-shadow:none;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.7)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stat{font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px;text-shadow:0 1px 10px rgba(0,0,0,.8)}
+.err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:40px;text-align:center}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Полёт</h1>
+    <p>Бесконечные горы без единой 3D-модели: высота, тени, снег и вода считаются для каждого пикселя. Мышь рулит, колёсико меняет скорость.</p>
+  </div>
+  <nav class="nav"><a href="fireworks.html">← Назад</a><a href="index.html">Все демо</a><a href="chladni.html">Дальше →</a></nav>
+</div>
+<div class="bar" id="bar"></div>
+<div class="err" id="err">Этому демо нужен WebGL 2. Откройте его в свежем Chrome или Safari.</div>
+<script>
+const COMMON = `#version 300 es
+precision highp float;
+const float WL = 58.;
+float hash(vec2 p){ vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+vec3 noised(vec2 x){
+  vec2 p = floor(x), f = fract(x), u = f * f * (3. - 2. * f), du = 6. * f * (1. - f);
+  float a = hash(p), b = hash(p + vec2(1, 0)), c = hash(p + vec2(0, 1)), d = hash(p + vec2(1, 1));
+  return vec3(a + (b - a) * u.x + (c - a) * u.y + (a - b - c + d) * u.x * u.y, du * (vec2(b - a, c - a) + (a - b - c + d) * u.yx));
+}
+const mat2 M2 = mat2(.8, -.6, .6, .8);
+// Высота земли: слои шума, причём на крутых склонах мелкие детали гасятся – выходит похоже на размытые водой хребты.
+float terr(vec2 x, int oct){
+  vec2 p = x * .0026, d = vec2(0.); float a = 0., b = 1.;
+  for (int i = 0; i < oct; i++) { vec3 n = noised(p); d += n.yz; a += b * n.x / (1. + dot(d, d)); b *= .5; p = M2 * p * 2.; }
+  return 165. * a;
+}`;
+const VS = COMMON + `
+uniform vec3 CP; uniform vec2 DIR;
+flat out float camY;
+void main(){
+  float h = WL;
+  for (int i = 0; i < 7; i++) h = max(h, terr(CP.xz + DIR * float(i) * 42., 3));
+  camY = h + 40.;
+  gl_Position = vec4(vec2(gl_VertexID & 1, gl_VertexID >> 1) * 4. - 1., 0, 1);
+}`;
+const FS = COMMON + `
+uniform vec2 R; uniform float T, YAW, PITCH, ROLL, NIGHT;
+uniform vec3 CP, SUN, SUNC, SKYZ, SKYH;
+flat in float camY;
+out vec4 O;
+float n2(vec2 p){ return noised(p).x; }
+float fbm(vec2 p){ float a = .5, s = 0.; for (int i = 0; i < 4; i++) { s += a * n2(p); p = M2 * p * 2.02; a *= .5; } return s; }
+vec3 sky(vec3 rd){
+  float y = max(rd.y, 0.);
+  vec3 c = mix(SKYH, SKYZ, pow(y, .5));
+  float sd = max(dot(rd, SUN), 0.);
+  c += SUNC * (pow(sd, 8.) * .22 + pow(sd, 90.) * .5 + pow(sd, 2400.) * 14.);
+  vec2 cp = rd.xz / (y + .12) * 1.1 + T * .006;
+  float cl = smoothstep(.5, .86, fbm(cp));
+  c = mix(c, mix(SKYH * 1.15 + SUNC * .25, SUNC * 1.1, pow(sd, 3.) * .6), cl * .7 * smoothstep(0., .2, y));
+  vec2 sp = rd.xz / (y + .3) * 160.; float st = hash(floor(sp));
+  c += vec3(.8, .88, 1.) * smoothstep(.993, 1., st) * NIGHT * smoothstep(.03, .3, y) * (1. - cl);
+  return c;
+}
+float shadow(vec3 p){
+  float res = 1., t = 5.;
+  for (int i = 0; i < 18; i++) {
+    vec3 q = p + SUN * t; float h = q.y - terr(q.xz, 3);
+    res = min(res, 10. * h / t); if (res < .02) break;
+    t += clamp(h, 7., 90.);
+  }
+  return clamp(res, 0., 1.);
+}
+void main(){
+  vec2 uv = (gl_FragCoord.xy * 2. - R) / R.y;
+  float cr = cos(ROLL), sr = sin(ROLL); uv = mat2(cr, -sr, sr, cr) * uv;
+  vec3 ro = vec3(CP.x, camY, CP.z);
+  vec3 f = vec3(sin(YAW) * cos(PITCH), sin(PITCH), cos(YAW) * cos(PITCH));
+  vec3 r = normalize(cross(vec3(0, 1, 0), f)), u = cross(f, r);
+  vec3 rd = normalize(f * 1.35 + r * uv.x + u * uv.y);
+  float t = 2., hit = -1.;
+  for (int i = 0; i < 120; i++) {
+    vec3 p = ro + rd * t; float h = p.y - terr(p.xz, 5);
+    if (h < .0025 * t) { hit = t; break; }
+    t += .5 * h; if (t > 3200.) break;
+  }
+  float tw = rd.y < 0. ? (WL - ro.y) / rd.y : -1.;
+  bool water = tw > 0. && (hit < 0. || tw < hit);
+  vec3 col; float dist;
+  vec3 fogc = mix(SKYH, SUNC, pow(max(dot(rd, SUN), 0.), 6.) * .45);
+  if (hit < 0. && !water) { col = sky(rd); dist = -1.; }
+  else {
+    if (water) hit = tw;
+    dist = hit;
+    vec3 p = ro + rd * hit;
+    if (water) {
+      float depth = WL - terr(p.xz, 5);
+      vec3 n = normalize(vec3(n2(p.xz * .35 + T * .5) - .5, 9., n2(p.zx * .35 - T * .4) - .5));
+      float fr = .03 + .97 * pow(1. - max(dot(n, -rd), 0.), 5.);
+      vec3 rf = reflect(rd, n);
+      vec3 body = mix(vec3(.06, .30, .30), vec3(.01, .06, .10), smoothstep(0., 22., depth)) * (SUNC * .7 + SKYZ * .6);
+      col = mix(body, sky(rf), fr);
+      col += vec3(.9) * smoothstep(1.4, 0., depth) * .25 * (SUNC + .2);
+    } else {
+      float e = max(.25, .0018 * hit);
+      float h0 = terr(p.xz, 8);
+      vec3 n = normalize(vec3(h0 - terr(p.xz + vec2(e, 0), 8), e, h0 - terr(p.xz + vec2(0, e), 8)));
+      float nz = fbm(p.xz * .05);
+      vec3 mat = mix(vec3(.21, .17, .15), vec3(.37, .30, .23), nz);
+      mat = mix(mat, vec3(.30, .19, .12), smoothstep(.55, .9, fbm(p.xz * .008 + 4.)) * .6);
+      float grass = smoothstep(.74, .9, n.y) * smoothstep(128., 86., p.y + 20. * nz);
+      mat = mix(mat, mix(vec3(.10, .16, .05), vec3(.20, .22, .08), nz), grass);
+      float snow = smoothstep(118., 142., p.y + 34. * nz) * smoothstep(.5, .78, n.y);
+      mat = mix(mat, vec3(.86, .89, .95), snow);
+      mat = mix(mat, mat * .55 + vec3(.05, .05, .03), smoothstep(WL + 3.5, WL, p.y));
+      float dif = clamp(dot(n, SUN), 0., 1.), sh = dif > .001 ? shadow(p + n * .6) : 0.;
+      float amb = .5 + .5 * n.y, back = clamp(dot(n, normalize(vec3(-SUN.x, 0., -SUN.z))), 0., 1.);
+      col = mat * (SUNC * dif * sh * 2.3 + SKYZ * amb * .75 + SUNC * back * .12);
+      col += SUNC * snow * pow(max(dot(reflect(rd, n), SUN), 0.), 18.) * sh * .5;
+    }
+    float fog = 1. - exp(-pow(dist * .00052, 1.35));
+    col = mix(col, fogc, fog);
+  }
+  col = col * (2.51 * col + .03) / (col * (2.43 * col + .59) + .14);
+  col = pow(clamp(col, 0., 1.), vec3(.4545));
+  col *= 1. - .2 * dot(uv * .55, uv * .55);
+  O = vec4(col, 1.);
+}`;
+const TIMES = [
+  {n: 'Рассвет', el: .16, az: .9, sun: [1.15, .68, .45], z: [.25, .36, .62], h: [.98, .72, .60], night: 0},
+  {n: 'День', el: .78, az: .5, sun: [1.1, 1.05, .96], z: [.20, .42, .85], h: [.68, .82, .96], night: 0},
+  {n: 'Закат', el: .09, az: -.7, sun: [1.25, .50, .20], z: [.17, .19, .42], h: [1.05, .52, .28], night: 0},
+  {n: 'Ночь', el: .62, az: -.3, sun: [.20, .27, .46], z: [.008, .014, .04], h: [.035, .055, .11], night: 1}
+];
+const cv = document.getElementById('c'), gl = cv.getContext('webgl2', {antialias: false, powerPreference: 'high-performance'});
+if (!gl) document.getElementById('err').style.display = 'flex';
+else {
+  const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) console.error(gl.getShaderInfoLog(o)); return o; };
+  const pr = gl.createProgram(); gl.attachShader(pr, sh(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr); gl.useProgram(pr);
+  const U = {}; ['R', 'T', 'CP', 'DIR', 'YAW', 'PITCH', 'ROLL', 'NIGHT', 'SUN', 'SUNC', 'SKYZ', 'SKYH'].forEach(n => U[n] = gl.getUniformLocation(pr, n));
+
+  const bar = document.getElementById('bar');
+  bar.innerHTML = TIMES.map((p, i) => `<button class="pill${i === 0 ? ' on' : ''}" data-i="${i}">${p.n}</button>`).join('') + '<span class="stat" id="stat"></span>';
+  const cur = JSON.parse(JSON.stringify(TIMES[0])); let goal = TIMES[0];
+  bar.addEventListener('click', e => { const b = e.target.closest('button'); if (!b) return; goal = TIMES[+b.dataset.i]; bar.querySelectorAll('button').forEach(x => x.classList.toggle('on', x === b)); });
+
+  let scale = 1, ema = 16, lastChange = 0, locked = false;
+  function resize() { const d = Math.min(1, devicePixelRatio || 1) * scale; cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d); gl.viewport(0, 0, cv.width, cv.height); }
+  addEventListener('resize', resize); resize();
+
+  let mx = 0, my = 0, speed = 1, speedT = 1, yaw = .4, steer = 0, pitch = -.16, px = 0, pz = 0;
+  addEventListener('pointermove', e => { mx = e.clientX / innerWidth * 2 - 1; my = e.clientY / innerHeight * 2 - 1; });
+  addEventListener('wheel', e => { speedT = Math.max(.2, Math.min(5, speedT * Math.exp(-e.deltaY * .0015))); e.preventDefault(); }, {passive: false});
+  const mix = (a, b, k) => a + (b - a) * k;
+  const stat = document.getElementById('stat');
+  let last = performance.now(), t = 0, frames = 0, fpsT = last;
+  function frame(now) {
+    const dt = Math.min(100, now - last) / 1000; last = now; t += dt;
+    speed = mix(speed, speedT, .05);
+    steer = mix(steer, Math.abs(mx) < .08 ? 0 : mx, .04); yaw += steer * .55 * dt;
+    pitch = mix(pitch, -.16 - my * .2, .05);
+    px += Math.sin(yaw) * 62 * speed * dt; pz += Math.cos(yaw) * 62 * speed * dt;
+    for (const k of ['el', 'az', 'night']) cur[k] = mix(cur[k], goal[k], .03);
+    for (const k of ['sun', 'z', 'h']) for (let i = 0; i < 3; i++) cur[k][i] = mix(cur[k][i], goal[k][i], .03);
+    gl.uniform2f(U.R, cv.width, cv.height); gl.uniform1f(U.T, t);
+    gl.uniform3f(U.CP, px, 0, pz); gl.uniform2f(U.DIR, Math.sin(yaw), Math.cos(yaw));
+    gl.uniform1f(U.YAW, yaw); gl.uniform1f(U.PITCH, pitch); gl.uniform1f(U.ROLL, -steer * .22); gl.uniform1f(U.NIGHT, cur.night);
+    gl.uniform3f(U.SUN, Math.sin(cur.az) * Math.cos(cur.el), Math.sin(cur.el), Math.cos(cur.az) * Math.cos(cur.el));
+    gl.uniform3fv(U.SUNC, cur.sun); gl.uniform3fv(U.SKYZ, cur.z); gl.uniform3fv(U.SKYH, cur.h);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+    ema += (dt * 1000 - ema) * .06;
+    if (now - lastChange > 900) {
+      if (ema > 21 && scale > .35) { scale = Math.max(.35, scale * (ema > 34 ? .7 : .87)); locked = true; lastChange = now; ema = 16; resize(); }
+      else if (ema < 17.6 && scale < 1 && !locked && now - lastChange > 4000) { scale = Math.min(1, scale + .1); lastChange = now; resize(); }
+    }
+    frames++;
+    if (now - fpsT > 500) {
+      stat.textContent = `скорость ${speed.toLocaleString('ru-RU', {maximumFractionDigits: 1})}× · ${Math.round(frames * 1000 / (now - fpsT))} кадров/с · ${cv.width}×${cv.height}`;
+      frames = 0; fpsT = now;
+    }
+    requestAnimationFrame(frame);
+  }
+  requestAnimationFrame(frame);
+}
+</script>
+</body>
+</html>

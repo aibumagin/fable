@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Полдень – механические часы · Fable 5.2</title>
+<style>
+:root{--paper:#edeae2;--ink:#15140f;--mute:#6f6b60;--line:rgba(21,20,15,.16);--acc:#f2a007;
+  --serif:Charter,"Iowan Old Style","PT Serif",Georgia,serif;
+  --sans:-apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;
+  --mono:ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+body{margin:0;background:var(--paper);color:var(--ink);font:16px/1.5 var(--sans);-webkit-font-smoothing:antialiased;overflow-x:hidden}
+a{color:inherit}
+.mono{font:500 11.5px/1.3 var(--mono);letter-spacing:.14em;text-transform:uppercase}
+.wrap{max-width:1280px;margin:0 auto;padding:0 40px}
+
+/* шапка */
+.top{position:fixed;z-index:40;left:0;right:0;top:0;display:flex;align-items:center;justify-content:space-between;padding:16px 40px;
+  background:rgba(237,234,226,.82);backdrop-filter:blur(12px);-webkit-backdrop-filter:blur(12px);border-bottom:1px solid var(--line)}
+.logo{font:600 21px/1 var(--serif);letter-spacing:.2em;text-decoration:none;display:flex;align-items:center;gap:10px}
+.logo i{width:9px;height:9px;border-radius:50%;background:var(--acc);display:block}
+.top nav{display:flex;gap:34px}
+.top nav a{text-decoration:none;opacity:.75;transition:opacity .15s}
+.top nav a:hover{opacity:1}
+.btn{display:inline-flex;align-items:center;gap:10px;border:1px solid var(--ink);background:var(--ink);color:var(--paper);padding:12px 18px;border-radius:2px;
+  font:600 14px/1 var(--sans);text-decoration:none;cursor:pointer;transition:background .18s,color .18s,border-color .18s,transform .18s}
+.btn:hover{background:var(--acc);border-color:var(--acc);color:var(--ink)}
+.btn.ghost{background:transparent;color:var(--ink)}
+.btn.ghost:hover{background:var(--ink);color:var(--paper);border-color:var(--ink)}
+.btn small{font:500 12px/1 var(--mono);opacity:.7}
+
+/* первый экран */
+.hero{position:relative;height:100vh;min-height:700px;overflow:hidden;padding-top:62px}
+.hero .meta{position:absolute;left:40px;right:40px;top:84px;display:flex;justify-content:space-between;border-top:2px solid var(--ink);padding-top:10px;z-index:3}
+.giant{position:absolute;left:0;right:0;top:50%;transform:translateY(-58%);text-align:center;font:600 23.5vw/0.8 var(--serif);letter-spacing:-.035em;
+  white-space:nowrap;user-select:none;will-change:transform}
+.hero .watch{position:absolute;left:50%;top:53%;height:min(84vh,860px);transform:translate(-50%,-50%);z-index:2;filter:drop-shadow(0 34px 38px rgba(21,20,15,.32))}
+.hero .pitch{position:absolute;left:40px;bottom:36px;max-width:360px;z-index:3}
+.hero .pitch h2{margin:0 0 10px;font:600 30px/1.08 var(--serif);letter-spacing:-.01em}
+.hero .pitch p{margin:0;color:var(--mute);font-size:15px}
+.hero .cta{position:absolute;right:40px;bottom:36px;display:flex;gap:10px;z-index:3}
+
+/* бегущая строка */
+.band{background:var(--ink);color:var(--acc);overflow:hidden;white-space:nowrap;padding:16px 0;font:600 26px/1 var(--serif);letter-spacing:.04em}
+.band div{display:inline-block;animation:run 38s linear infinite}
+.band span{margin:0 26px}
+.band b{color:var(--paper);font-weight:400;font-size:14px;vertical-align:middle}
+@keyframes run{to{transform:translateX(-50%)}}
+
+section{padding:120px 0}
+.tag{display:flex;align-items:center;gap:12px;margin-bottom:26px}
+.tag b{background:var(--acc);color:var(--ink);padding:5px 8px;font-weight:600}
+h2.big{margin:0;font:600 clamp(56px,9vw,140px)/.92 var(--serif);letter-spacing:-.035em}
+h2.big em{font-style:italic;color:var(--acc)}
+.lead{max-width:520px;color:var(--mute);font-size:18px;margin:26px 0 0}
+.reveal{opacity:0;transform:translateY(26px);transition:opacity .8s cubic-bezier(.2,.7,.2,1),transform .8s cubic-bezier(.2,.7,.2,1)}
+.reveal.in{opacity:1;transform:none}
+
+/* цифры */
+.dark{background:var(--ink);color:var(--paper)}
+.dark .lead{color:#a7a294}
+.stats{display:grid;grid-template-columns:repeat(4,1fr);margin-top:80px;border-top:1px solid rgba(237,234,226,.22)}
+.stats div{padding:26px 22px 0 0;border-right:1px solid rgba(237,234,226,.22);margin-right:22px}
+.stats div:last-child{border:0;margin:0}
+.stats .n{font:600 clamp(44px,5.6vw,84px)/1 var(--serif);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+.stats .n sup{font:500 15px/1 var(--mono);letter-spacing:.08em;color:var(--acc);margin-left:6px;vertical-align:top;position:relative;top:10px}
+.stats p{margin:14px 0 0;color:#a7a294;font-size:14.5px;max-width:24ch}
+
+/* механизм */
+.mech{display:grid;grid-template-columns:minmax(0,1.55fr) minmax(280px,1fr);gap:28px;margin-top:64px;align-items:stretch}
+.stage{background:#11110e;border-radius:6px;position:relative;overflow:hidden;min-height:440px;display:flex;align-items:center}
+.stage svg{width:100%;height:auto;display:block}
+.speed{position:absolute;left:18px;bottom:16px;display:flex;gap:6px;align-items:center;color:#a7a294}
+.speed button{border:1px solid rgba(237,234,226,.25);background:transparent;color:#edeae2;border-radius:999px;padding:7px 12px;font:500 12px/1 var(--mono);cursor:pointer;transition:background .15s,color .15s}
+.speed button.on{background:var(--acc);border-color:var(--acc);color:var(--ink)}
+.clock{position:absolute;right:18px;bottom:18px;color:#a7a294;font:500 12px/1 var(--mono);letter-spacing:.08em}
+.parts{list-style:none;margin:0;padding:0;border-top:2px solid var(--ink)}
+.parts li{display:grid;grid-template-columns:34px 1fr auto;gap:6px 10px;padding:13px 0;border-bottom:1px solid var(--line);cursor:default;transition:background .15s,padding .15s}
+.parts li b{font:600 17px/1.2 var(--serif)}
+.parts li i{font:500 11.5px/1.6 var(--mono);color:var(--mute);font-style:normal}
+.parts li u{font:500 11.5px/1.6 var(--mono);text-decoration:none;color:var(--mute);font-variant-numeric:tabular-nums}
+.parts li p{grid-column:2/4;margin:0;font-size:13.5px;color:var(--mute);line-height:1.4}
+.parts li.hl{background:rgba(242,160,7,.16);padding-left:10px;padding-right:10px}
+.g-part{cursor:pointer}
+.g-part .body{fill:#c8a455;stroke:#7a5f25;stroke-width:.6;transition:fill .15s}
+.g-part .steel{fill:#b9bdc4;stroke:#5a5e66;stroke-width:.5;transition:fill .15s}
+.g-part .drum{fill:#3a3a36;stroke:#77756b;stroke-width:.6;transition:fill .15s}
+.g-part.hl .body,.g-part.hl .steel,.g-part.hl .drum{fill:var(--acc)}
+
+/* конфигуратор */
+.conf{display:grid;grid-template-columns:1.05fr 1fr;gap:0;margin-top:64px;border:2px solid var(--ink)}
+.conf .view{position:relative;background:#e2ded3;display:flex;align-items:center;justify-content:center;min-height:620px;overflow:hidden;transition:background .5s}
+.conf .view .ghost-n{position:absolute;left:24px;top:10px;font:600 180px/1 var(--serif);color:rgba(21,20,15,.07);letter-spacing:-.04em}
+.conf .view .watch{height:560px;filter:drop-shadow(0 26px 30px rgba(21,20,15,.3));transition:transform .5s cubic-bezier(.2,.7,.2,1)}
+.conf .opts{padding:34px;border-left:2px solid var(--ink);display:flex;flex-direction:column;gap:26px}
+.opt .mono{display:flex;justify-content:space-between;margin-bottom:12px}
+.opt .mono span:last-child{color:var(--mute)}
+.sw{display:flex;gap:10px}
+.sw button{width:58px;height:58px;border:2px solid var(--ink);background:var(--c);cursor:pointer;position:relative;padding:0;transition:transform .15s}
+.sw button:hover{transform:translateY(-2px)}
+.sw button.on::after{content:"";position:absolute;right:6px;top:6px;width:9px;height:9px;background:var(--paper);border:2px solid var(--ink)}
+.choice{display:grid;grid-template-columns:repeat(3,1fr);gap:10px}
+.choice button{border:2px solid var(--ink);background:transparent;color:var(--ink);padding:12px 12px 14px;text-align:left;cursor:pointer;font:600 15px/1.2 var(--sans);transition:background .15s,color .15s}
+.choice button small{display:block;margin-top:6px;font:500 11px/1.3 var(--mono);opacity:.7}
+.choice button.on{background:var(--ink);color:var(--paper)}
+.bill{margin-top:auto;border-top:1px solid var(--line)}
+.bill div{display:flex;justify-content:space-between;padding:8px 0;font-size:14.5px;border-bottom:1px solid var(--line)}
+.bill div span:last-child{font-family:var(--mono);font-size:13px}
+.total{display:flex;justify-content:space-between;align-items:flex-end;margin-top:6px}
+.total b{font:600 60px/1 var(--serif);letter-spacing:-.03em;font-variant-numeric:tabular-nums}
+
+footer{background:var(--acc);padding:110px 0 40px}
+footer h2{margin:0 0 34px;font:600 clamp(48px,7.4vw,112px)/.95 var(--serif);letter-spacing:-.035em}
+footer .note{margin-top:90px;padding-top:16px;border-top:1px solid rgba(21,20,15,.35);display:flex;justify-content:space-between;gap:30px;font-size:13.5px}
+.all{position:fixed;z-index:50;left:18px;bottom:18px;background:var(--ink);color:var(--paper);border-radius:999px;padding:9px 14px;font:500 12.5px/1 var(--mono);text-decoration:none}
+.all:hover{background:var(--acc);color:var(--ink)}
+
+/* части часов */
+.watch{--dial:#16233b;--index:#ece7d8;--hand:#ece7d8;--sec:#f2a007;--case-a:#fafaf8;--case-b:#8b8f96;--case-c:#d6d8db;--strap:#5b3b27;--strap2:#3d2718;overflow:visible}
+.watch .strap{display:none}
+.watch[data-strap="leather"] .s-leather,.watch[data-strap="steel"] .s-steel,.watch[data-strap="fabric"] .s-fabric{display:block}
+.watch .index rect,.watch .index line{fill:var(--index);stroke:var(--index)}
+.watch .index .lume{fill:#fbf6df;stroke:none}
+.watch text{fill:var(--index)}
+@media (max-width:980px){.top nav{display:none}.mech,.conf{grid-template-columns:1fr}.conf .opts{border-left:0;border-top:2px solid var(--ink)}.stats{grid-template-columns:repeat(2,1fr);row-gap:30px}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <a class="logo" href="#top">ПОЛДЕНЬ<i></i></a>
+  <nav class="mono"><a href="#numbers">Цифры</a><a href="#inside">Механизм</a><a href="#build">Собрать</a></nav>
+  <a class="btn" href="#build">Предзаказ <small>4 900 ₽</small></a>
+</header>
+
+<section class="hero" id="top" style="padding-bottom:0">
+  <div class="meta mono"><span>01 / Полдень Один</span><span>Механические часы. Партия 02 – весна 2027</span><span id="digital">00:00:00</span></div>
+  <div class="giant" id="giant">Полдень</div>
+  <svg class="watch" id="w1" viewBox="-215 -285 430 570" data-strap="leather"></svg>
+  <div class="pitch">
+    <h2>Одни часы. Ручной завод. Ничего лишнего.</h2>
+    <p>Стрелки на этой странице идут по вашему времени. Механизм ниже крутится по-настоящему: каждая шестерня нарисована кодом.</p>
+  </div>
+  <div class="cta"><a class="btn" href="#build">Предзаказ за 4 900 ₽ →</a><a class="btn ghost" href="#inside">Заглянуть внутрь</a></div>
+</section>
+
+<div class="band"><div id="band"></div></div>
+
+<section class="dark" id="numbers">
+  <div class="wrap">
+    <div class="tag mono reveal"><b>02</b><span>Цифры</span></div>
+    <h2 class="big reveal">Честные <em>цифры</em></h2>
+    <p class="lead reveal">Мы не пишем «швейцарская точность». Мы пишем, сколько раз в час качается баланс и когда часы встанут, если про них забыть.</p>
+    <div class="stats">
+      <div class="reveal"><div class="n"><span data-n="18000">0</span><sup>ПК/Ч</sup></div><p>Полуколебаний баланса в час. Пять тиков в секунду – их видно на секундной стрелке.</p></div>
+      <div class="reveal"><div class="n"><span data-n="42">0</span><sup>Ч</sup></div><p>Запас хода. Завели в пятницу вечером – в воскресенье днём ещё идут.</p></div>
+      <div class="reveal"><div class="n"><span data-n="17">0</span><sup>КАМНЕЙ</sup></div><p>Рубиновые опоры на осях. Трение меньше, служат дольше.</p></div>
+      <div class="reveal"><div class="n"><span data-n="38.5" data-d="1">0</span><sup>ММ</sup></div><p>Диаметр корпуса. Помещается под манжету и не спорит с рукой.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="inside">
+  <div class="wrap">
+    <div class="tag mono reveal"><b>03</b><span>Механизм</span></div>
+    <h2 class="big reveal">Нечего <em>прятать</em></h2>
+    <p class="lead reveal">В кварцевых часах – батарейка и микросхема. Здесь – пружина и колёса. Семь узлов делают всю работу. Наведите на любой.</p>
+    <div class="mech reveal">
+      <div class="stage">
+        <svg id="train" viewBox="52 150 560 268"></svg>
+        <div class="speed"><span class="mono">Время</span><button data-s="1" class="on">×1</button><button data-s="60">×60</button><button data-s="3600">×3600</button></div>
+        <div class="clock" id="mclock"></div>
+      </div>
+      <ul class="parts" id="parts"></ul>
+    </div>
+  </div>
+</section>
+
+<section id="build" style="padding-top:0">
+  <div class="wrap">
+    <div class="tag mono reveal"><b>04</b><span>Конфигуратор</span></div>
+    <h2 class="big reveal">Соберите <em>свои</em></h2>
+    <div class="conf reveal">
+      <div class="view" id="view"><div class="ghost-n">12</div><svg class="watch" id="w2" viewBox="-215 -285 430 570" data-strap="leather"></svg></div>
+      <div class="opts">
+        <div class="opt"><div class="mono"><span>Циферблат</span><span id="lDial"></span></div><div class="sw" id="oDial"></div></div>
+        <div class="opt"><div class="mono"><span>Корпус</span><span id="lCase"></span></div><div class="choice" id="oCase"></div></div>
+        <div class="opt"><div class="mono"><span>Ремешок</span><span id="lStrap"></span></div><div class="choice" id="oStrap"></div></div>
+        <div class="bill" id="bill"></div>
+        <div class="total"><span class="mono">Ваша цена</span><b id="total">0 ₽</b></div>
+        <a class="btn" href="#top" style="justify-content:center;padding:18px">Оставить предзаказ →</a>
+      </div>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <h2>Заведите привычку.<br>Раз в два дня.</h2>
+    <a class="btn" href="#build">Предзаказ за 4 900 ₽ →</a>
+    <div class="note"><span>«Полдень» – вымышленный бренд.</span><span>Страницу целиком написала Claude Fable 5.2. Один HTML-файл, вся графика – SVG из кода, без единой картинки.</span></div>
+  </div>
+</footer>
+<a class="all" href="index.html">← Все демо</a>
+
+<script>
+const TAU = Math.PI * 2, $ = s => document.querySelector(s);
+const xy = (r, a) => (r * Math.cos(a)).toFixed(2) + ' ' + (r * Math.sin(a)).toFixed(2);
+
+/* ---------- шестерни ---------- */
+function gearPath(z, R, hole) {
+  const m = 2 * R / z, Ra = R + 0.9 * m, Rf = R - 1.1 * m, p = TAU / z;
+  let d = '';
+  for (let j = 0; j < z; j++) {
+    const a = j * p;
+    d += (j ? 'L' : 'M') + xy(Rf, a - .30 * p) + 'L' + xy(Ra, a - .13 * p) + 'L' + xy(Ra, a + .13 * p) + 'L' + xy(Rf, a + .30 * p);
+  }
+  d += 'Z';
+  if (hole) d += `M${hole} 0A${hole} ${hole} 0 1 0 ${-hole} 0A${hole} ${hole} 0 1 0 ${hole} 0Z`;
+  return d;
+}
+function wheel(z, R, spokes, cls) {
+  const m = 2 * R / z, Rf = R - 1.1 * m, rim = Math.max(3.4, R * 0.1), hole = Rf - rim, hub = Math.max(4.5, R * 0.15);
+  let s = `<path class="${cls}" fill-rule="evenodd" d="${gearPath(z, R, hole)}"/>`;
+  for (let i = 0; i < spokes; i++)
+    s += `<rect class="${cls}" x="${(-hub * .36).toFixed(2)}" y="${(-hole - 1).toFixed(2)}" width="${(hub * .72).toFixed(2)}" height="${(hole + 1).toFixed(2)}" transform="rotate(${i * 360 / spokes})"/>`;
+  return s + `<circle class="${cls}" r="${hub.toFixed(2)}"/>`;
+}
+function spiral(r0, r1, turns) {
+  let d = ''; const n = turns * 36;
+  for (let i = 0; i <= n; i++) d += (i ? 'L' : 'M') + xy(r0 + (r1 - r0) * i / n, i / 36 * TAU);
+  return d;
+}
+const jewel = '<circle r="2.6" fill="#d83a6e"/><circle r="1" fill="#ffc2d6"/>';
+
+/* Колёсная передача. У каждой оси большое колесо и маленький триб; колесо сцеплено с трибом следующей оси. */
+const AX = [
+  {n: 'Заводной барабан', d: 'Внутри – пружина длиной 28 см. Это и есть батарейка.', z: 72, R: 95, sp: 0, pz: 0, rate: -1 / 6, a: -0.5},
+  {n: 'Центральное колесо', d: 'Один оборот в час. На его оси сидит минутная стрелка.', z: 64, R: 70, sp: 5, pz: 12, rate: 1, a: 0.45},
+  {n: 'Промежуточное колесо', d: 'Передаёт вращение дальше и ускоряет его в восемь раз.', z: 60, R: 58, sp: 5, pz: 8, rate: -8, a: -0.55},
+  {n: 'Секундное колесо', d: 'Один оборот в минуту. Секундная стрелка – на нём.', z: 60, R: 50, sp: 4, pz: 8, rate: 60, a: 0.5},
+  {n: 'Анкерное колесо', d: 'Пятнадцать зубьев. Отпускает механизм по одному шагу.', z: 15, R: 30, sp: 4, pz: 6, rate: -600}
+];
+(function layoutTrain() {
+  let x = 150, y = 300;
+  AX.forEach((g, i) => {
+    g.x = x; g.y = y; g.phi = 0;
+    if (i) {
+      const w = AX[i - 1], al = w.a;                       // фаза триба: зуб колеса попадает во впадину
+      g.pr = (2 * w.R / w.z) * g.pz / 2;
+      g.phi = al + Math.PI - (0.5 - al * w.z / TAU) * TAU / g.pz;
+    }
+    if (i < AX.length - 1) {
+      const nx = AX[i + 1], dist = g.R + (2 * g.R / g.z) * nx.pz / 2;
+      x += dist * Math.cos(g.a); y += dist * Math.sin(g.a);
+    }
+  });
+})();
+const ESC = AX[4], FB = -0.22;
+const FORK = {x: ESC.x + 47 * Math.cos(FB), y: ESC.y + 47 * Math.sin(FB)};
+const BAL = {x: FORK.x + 47 * Math.cos(FB), y: FORK.y + 47 * Math.sin(FB)};
+const PARTS = AX.map(g => ({n: g.n, d: g.d})).concat([
+  {n: 'Анкерная вилка', d: 'Качается туда-сюда и по очереди запирает зубья. Это она тикает.'},
+  {n: 'Баланс со спиралью', d: 'Маятник часов. Качается 2,5 раза в секунду и задаёт ритм всему.'}
+]);
+
+function buildTrain() {
+  let s = '<defs><radialGradient id="gl" cx=".35" cy=".3" r=".9"><stop offset="0" stop-color="#fff" stop-opacity=".28"/><stop offset=".6" stop-color="#fff" stop-opacity="0"/></radialGradient></defs>';
+  s += '<g opacity=".5">';
+  for (let i = 0; i < 9; i++) s += `<circle cx="330" cy="285" r="${40 + i * 38}" fill="none" stroke="#edeae2" stroke-opacity=".05"/>`;
+  s += '</g>';
+  // анкерное колесо со своими крючковатыми зубьями
+  let ed = ''; const ep = TAU / 15;
+  for (let j = 0; j < 15; j++) { const a = j * ep; ed += (j ? 'L' : 'M') + xy(21, a) + 'L' + xy(30, a + .42 * ep) + 'L' + xy(29.4, a + .5 * ep) + 'L' + xy(21, a + .66 * ep); }
+  ed += 'ZM16 0A16 16 0 1 0 -16 0A16 16 0 1 0 16 0Z';
+  const escW = `<path class="body" fill-rule="evenodd" d="${ed}"/>` + [0, 90, 180, 270].map(r => `<rect class="body" x="-1.4" y="-17" width="2.8" height="17" transform="rotate(${r})"/>`).join('') + '<circle class="body" r="4.5"/>';
+  for (let i = 4; i >= 0; i--) {            // нижние слои рисуем первыми
+    const g = AX[i];
+    let body = i === 4 ? escW : i === 0
+      ? `<path class="drum" d="${gearPath(g.z, g.R, 0)}"/><circle r="78" fill="#2b2b28" stroke="#77756b" stroke-width=".6"/><path d="${spiral(14, 72, 9)}" fill="none" stroke="#8e8a7c" stroke-width="1.5"/><circle r="12" fill="#b9bdc4" stroke="#5a5e66"/><rect x="-3" y="-3" width="6" height="6" fill="#3a3a36"/>`
+      : wheel(g.z, g.R, g.sp, 'body');
+    s += `<g class="g-part" data-i="${i}"><g id="ax${i}">${body}</g><circle cx="${g.x}" cy="${g.y}" r="${g.R}" fill="url(#gl)" pointer-events="none"/></g>`;
+  }
+  for (let i = 1; i <= 4; i++) {            // трибы – поверх всего, чтобы было видно сцепление
+    const g = AX[i];
+    s += `<g class="g-part" data-i="${i}"><g id="pn${i}"><path class="steel" d="${gearPath(g.pz, g.pr, 0)}"/></g><g transform="translate(${g.x} ${g.y})">${jewel}</g></g>`;
+  }
+  s += `<g transform="translate(${AX[0].x} ${AX[0].y})">${jewel}</g>`;
+  s += `<g class="g-part" data-i="5"><g id="fork"><path class="steel" d="M-27 -15L-19 -11L-2 -3.4L30 -2.2L36 -6.5L39 -5L34 0L39 5L36 6.5L30 2.2L-2 3.4L-19 11L-27 15L-29.5 10.5L-21 5.5L-7 0L-21 -5.5L-29.5 -10.5Z"/><rect x="-31" y="-15.5" width="6" height="4.2" fill="#d83a6e"/><rect x="-31" y="11.3" width="6" height="4.2" fill="#d83a6e"/></g><g transform="translate(${FORK.x} ${FORK.y})">${jewel}</g></g>`;
+  let screws = ''; for (let i = 0; i < 8; i++) screws += `<circle class="body" cx="${(44 * Math.cos(i * TAU / 8 + .39)).toFixed(2)}" cy="${(44 * Math.sin(i * TAU / 8 + .39)).toFixed(2)}" r="2.6"/>`;
+  s += `<g class="g-part" data-i="6"><g id="bal"><circle r="42" fill="none" class="body" style="fill:none;stroke:#c8a455;stroke-width:5.5"/><circle r="42" fill="transparent"/>${screws}<rect class="body" x="-42" y="-2.2" width="84" height="4.4"/><rect class="body" x="-2.2" y="-42" width="4.4" height="84"/><path id="hair" d="${spiral(5, 27, 6)}" fill="none" stroke="#6f93d8" stroke-width=".9"/><circle class="steel" r="5.5"/><circle cx="0" cy="8" r="1.8" fill="#d83a6e"/></g><g transform="translate(${BAL.x} ${BAL.y})">${jewel}</g></g>`;
+  $('#train').innerHTML = s;
+  $('#parts').innerHTML = PARTS.map((p, i) => `<li data-i="${i}"><i>0${i + 1}</i><b>${p.n}</b><u id="rate${i}"></u><p>${p.d}</p></li>`).join('');
+  const hl = (i, on) => document.querySelectorAll(`[data-i="${i}"]`).forEach(e => e.classList.toggle('hl', on));
+  document.querySelectorAll('.g-part,.parts li').forEach(e => {
+    e.addEventListener('pointerenter', () => hl(e.dataset.i, true));
+    e.addEventListener('pointerleave', () => hl(e.dataset.i, false));
+  });
+}
+
+/* ---------- часы ---------- */
+function buildWatch(svg, u) {
+  let ticks = '', bat = '', rays = '', seedv = 7;
+  for (let i = 0; i < 60; i++) { const f = i % 5 === 0; ticks += `<line y1="-131" y2="${f ? -123 : -127}" stroke-width="${f ? 1.5 : .7}" transform="rotate(${i * 6})"/>`; }
+  for (let h = 0; h < 12; h++) {
+    if (h === 3 || h === 6) continue;
+    bat += `<g transform="rotate(${h * 30})">` + (h === 0
+      ? '<rect x="-9" y="-118" width="7.4" height="25" rx="1.2"/><rect x="1.6" y="-118" width="7.4" height="25" rx="1.2"/>'
+      : '<rect x="-3.7" y="-118" width="7.4" height="25" rx="1.2"/><rect class="lume" x="-1.7" y="-115" width="3.4" height="19" rx="1"/>') + '</g>';
+  }
+  for (let i = 0; i < 160; i++) { seedv = seedv * 16807 % 2147483647; rays += `<line y1="-12" y2="-133" stroke="#fff" stroke-opacity="${(0.012 + seedv % 100 / 100 * 0.05).toFixed(3)}" stroke-width="2.8" transform="rotate(${(i * 2.25).toFixed(2)})"/>`; }
+  let links = '', fab = '';
+  for (let k = 0; k < 2; k++) {
+    const sg = k ? 1 : -1;
+    for (let r = 0; r < 8; r++) {
+      const y = sg * (132 + r * 18.5) - (k ? 0 : 16), w = 60 - r * 1.1;
+      links += `<rect x="${-w}" y="${y}" width="${w * 2}" height="16" rx="3" fill="url(#met${u})" stroke="rgba(0,0,0,.35)" stroke-width=".6"/><rect x="${-w * .42}" y="${y - 1.5}" width="${w * .84}" height="19" rx="3" fill="url(#met${u})" stroke="rgba(0,0,0,.35)" stroke-width=".6"/>`;
+    }
+    const y0 = k ? 120 : -285;
+    fab += `<rect x="-60" y="${y0}" width="120" height="165" fill="var(--strap)"/><rect x="-18" y="${y0}" width="36" height="165" fill="var(--sec)"/><rect x="-60" y="${y0}" width="120" height="165" fill="url(#weave${u})"/>`;
+  }
+  svg.innerHTML = `
+<defs>
+  <linearGradient id="met${u}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" style="stop-color:var(--case-a)"/><stop offset=".45" style="stop-color:var(--case-b)"/><stop offset=".62" style="stop-color:var(--case-c)"/><stop offset="1" style="stop-color:var(--case-b)"/></linearGradient>
+  <linearGradient id="met2${u}" x1="1" y1="0" x2="0" y2="1"><stop offset="0" style="stop-color:var(--case-a)"/><stop offset=".5" style="stop-color:var(--case-b)"/><stop offset="1" style="stop-color:var(--case-c)"/></linearGradient>
+  <radialGradient id="dsh${u}" cx=".5" cy=".5" r=".5"><stop offset=".7" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".38"/></radialGradient>
+  <linearGradient id="gls${u}" x1="0" y1="0" x2=".8" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".34"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  <linearGradient id="lth${u}" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#000" stop-opacity=".3"/><stop offset=".2" stop-color="#000" stop-opacity="0"/><stop offset=".8" stop-color="#000" stop-opacity="0"/><stop offset="1" stop-color="#000" stop-opacity=".34"/></linearGradient>
+  <pattern id="weave${u}" width="4" height="4" patternUnits="userSpaceOnUse"><rect width="4" height="4" fill="none"/><path d="M0 0H2V2H0ZM2 2H4V4H2Z" fill="#000" fill-opacity=".16"/></pattern>
+  <clipPath id="hc${u}"><circle cx="0" cy="60" r="27.5"/></clipPath>
+</defs>
+<g class="strap s-leather">
+  <path d="M-62 -122L62 -122L53 -285L-53 -285Z" fill="var(--strap)"/><path d="M-62 -122L62 -122L53 -285L-53 -285Z" fill="url(#lth${u})"/>
+  <path d="M-54 -128L-46.5 -285M54 -128L46.5 -285" stroke="#e8d9b8" stroke-opacity=".7" stroke-width="1.1" stroke-dasharray="5 4" fill="none"/>
+  <path d="M-62 122L62 122L53 285L-53 285Z" fill="var(--strap)"/><path d="M-62 122L62 122L53 285L-53 285Z" fill="url(#lth${u})"/>
+  <path d="M-54 128L-46.5 285M54 128L46.5 285" stroke="#e8d9b8" stroke-opacity=".7" stroke-width="1.1" stroke-dasharray="5 4" fill="none"/>
+  ${[176, 204, 232, 260].map(y => `<ellipse cx="0" cy="${y}" rx="3.2" ry="4.2" fill="var(--strap2)"/>`).join('')}
+</g>
+<g class="strap s-steel">${links}</g>
+<g class="strap s-fabric">${fab}</g>
+${[[1, 1], [-1, 1], [1, -1], [-1, -1]].map(([a, b]) => `<rect x="-88" y="-180" width="25" height="84" rx="9" fill="url(#met2${u})" stroke="rgba(0,0,0,.3)" stroke-width=".6" transform="scale(${a} ${b}) rotate(-9 -75 -138)"/>`).join('')}
+<rect x="147" y="-15" width="24" height="30" rx="4.5" fill="url(#met2${u})" stroke="rgba(0,0,0,.35)" stroke-width=".6"/>
+${[-9, -4.5, 0, 4.5, 9].map(y => `<line x1="152" x2="170" y1="${y}" y2="${y}" stroke="rgba(0,0,0,.28)" stroke-width="1"/>`).join('')}
+<circle r="152" fill="url(#met${u})" stroke="rgba(0,0,0,.35)" stroke-width=".8"/>
+<circle r="141" fill="url(#met2${u})"/><circle r="136" fill="#0b0b0a"/>
+<circle r="134" style="fill:var(--dial)"/>
+<g>${rays}</g>
+<circle r="134" fill="url(#dsh${u})"/>
+<g class="index" stroke-linecap="butt">${ticks}${bat}</g>
+<text y="-62" text-anchor="middle" font-family='Charter,"PT Serif",Georgia,serif' font-weight="600" font-size="15.5" letter-spacing="4.5">ПОЛДЕНЬ</text>
+<text y="-47" text-anchor="middle" font-family="Menlo,monospace" font-size="6.2" letter-spacing="2.4" opacity=".75">РУЧНОЙ ЗАВОД</text>
+<text y="108" text-anchor="middle" font-family="Menlo,monospace" font-size="5.6" letter-spacing="2.2" opacity=".6">17 КАМНЕЙ</text>
+<rect x="84" y="-11" width="27" height="22" rx="2" fill="#f6f2e6" stroke="rgba(0,0,0,.5)" stroke-width="1"/>
+<text id="date${u}" x="97.5" y="6" text-anchor="middle" font-family="Menlo,monospace" font-weight="700" font-size="14" style="fill:#15140f">1</text>
+<circle cx="0" cy="60" r="31" fill="url(#met2${u})"/><circle cx="0" cy="60" r="27.5" fill="#0c0c0b"/>
+<g clip-path="url(#hc${u})"><g transform="translate(0 60)">
+  <g id="hb${u}"><circle r="21" fill="none" stroke="#c8a455" stroke-width="3.6"/><rect x="-21" y="-1.4" width="42" height="2.8" fill="#c8a455"/><rect x="-1.4" y="-21" width="2.8" height="42" fill="#c8a455"/><path d="${spiral(3, 14, 5)}" fill="none" stroke="#7fa2e6" stroke-width=".6"/></g>
+  <rect x="-30" y="-3" width="60" height="6" rx="3" fill="url(#met${u})" opacity=".92"/><circle r="3.4" fill="#d83a6e"/><circle r="1.2" fill="#ffc2d6"/>
+</g></g>
+<g id="hh${u}"><path d="M0 -80L7.5 -8L0 9L-7.5 -8Z" style="fill:var(--hand)" stroke="rgba(0,0,0,.35)" stroke-width=".5"/><path d="M0 -70L2.4 -20L-2.4 -20Z" fill="#fbf6df"/></g>
+<g id="hm${u}"><path d="M0 -124L5.8 -8L0 11L-5.8 -8Z" style="fill:var(--hand)" stroke="rgba(0,0,0,.35)" stroke-width=".5"/><path d="M0 -112L2 -30L-2 -30Z" fill="#fbf6df"/></g>
+<g id="hs${u}"><line y1="34" y2="-128" style="stroke:var(--sec)" stroke-width="1.5"/><circle cy="24" r="5" style="fill:var(--sec)"/><circle cy="-100" r="2.6" style="fill:var(--sec)"/></g>
+<circle r="6.5" fill="url(#met${u})" stroke="rgba(0,0,0,.4)" stroke-width=".5"/><circle r="2" fill="#15140f"/>
+<circle r="134" fill="url(#gls${u})" pointer-events="none"/>`;
+  return {hh: $('#hh' + u), hm: $('#hm' + u), hs: $('#hs' + u), hb: $('#hb' + u), date: $('#date' + u)};
+}
+
+/* ---------- сборка страницы ---------- */
+buildTrain();
+const W1 = buildWatch($('#w1'), 'a'), W2 = buildWatch($('#w2'), 'b');
+$('#band').innerHTML = Array(2).fill(['Ручной завод', '18 000 полуколебаний в час', '42 часа запаса хода', 'Партии по 500 штук', 'Ни одной батарейки', '17 рубиновых камней']
+  .map(t => `<span>${t}</span><b>◆</b>`).join('')).join('');
+
+// конфигуратор
+const DIALS = [
+  {n: 'Полночь', c: '#16233b', idx: '#ece7d8', bg: '#dfe0df', p: 0},
+  {n: 'Снег', c: '#ece8dc', idx: '#1c1b17', bg: '#d9d6cc', p: 0},
+  {n: 'Сосна', c: '#1d3a2c', idx: '#ece7d8', bg: '#d9dfd3', p: 0},
+  {n: 'Медь', c: '#b4623f', idx: '#fbf3e4', bg: '#ead9cc', p: 2000}
+];
+const CASES = [
+  {n: 'Сталь', s: 'полированная', a: '#fafaf8', b: '#8b8f96', c: '#d6d8db', p: 0},
+  {n: 'Чёрный', s: 'покрытие DLC', a: '#6b6b6b', b: '#1b1b1c', c: '#3d3d3f', p: 5500},
+  {n: 'Бронза', s: 'темнеет со временем', a: '#f0cf9a', b: '#8a5a2b', c: '#c99555', p: 9000}
+];
+const STRAPS = [
+  {n: 'Кожа', s: 'растительное дубление', k: 'leather', p: 0},
+  {n: 'Сталь', s: 'браслет', k: 'steel', p: 6500},
+  {n: 'Ткань', s: 'с цветной полосой', k: 'fabric', p: -1500}
+];
+const BASE = 48900, st = {dial: 0, cs: 0, strap: 0};
+const rub = n => Math.round(n).toLocaleString('ru-RU') + ' ₽';
+let shown = BASE, target = BASE;
+function applyConf() {
+  const d = DIALS[st.dial], c = CASES[st.cs], s = STRAPS[st.strap];
+  for (const w of [$('#w1'), $('#w2')]) {
+    w.style.setProperty('--dial', d.c); w.style.setProperty('--index', d.idx); w.style.setProperty('--hand', d.idx);
+    w.style.setProperty('--case-a', c.a); w.style.setProperty('--case-b', c.b); w.style.setProperty('--case-c', c.c);
+    w.dataset.strap = s.k;
+    w.style.setProperty('--strap', s.k === 'fabric' ? '#3b3f45' : '#5b3b27');
+  }
+  $('#view').style.background = d.bg;
+  $('#lDial').textContent = d.n; $('#lCase').textContent = c.n; $('#lStrap').textContent = s.n;
+  const rows = [['Полдень Один', BASE], ['Циферблат «' + d.n + '»', d.p], ['Корпус: ' + c.n.toLowerCase(), c.p], ['Ремешок: ' + s.n.toLowerCase(), s.p]];
+  $('#bill').innerHTML = rows.map(([a, b], i) => `<div><span>${a}</span><span>${i ? (b > 0 ? '+' + rub(b) : b < 0 ? '−' + rub(-b) : 'включено') : rub(b)}</span></div>`).join('');
+  target = rows.reduce((s, r) => s + r[1], 0);
+  $('#w2').style.transform = 'scale(1.03) rotate(-2deg)';
+  setTimeout(() => $('#w2').style.transform = '', 260);
+}
+function opts(el, list, key, html) {
+  el.innerHTML = list.map((o, i) => html(o, i)).join('');
+  el.querySelectorAll('button').forEach((b, i) => b.addEventListener('click', () => {
+    st[key] = i; el.querySelectorAll('button').forEach((x, j) => x.classList.toggle('on', j === i)); applyConf();
+  }));
+  el.querySelector('button').classList.add('on');
+}
+opts($('#oDial'), DIALS, 'dial', o => `<button style="--c:${o.c}" title="${o.n}" aria-label="${o.n}"></button>`);
+opts($('#oCase'), CASES, 'cs', o => `<button>${o.n}<small>${o.s}</small></button>`);
+opts($('#oStrap'), STRAPS, 'strap', o => `<button>${o.n}<small>${o.s}</small></button>`);
+applyConf();
+
+// скорость времени в механизме
+let speed = 1;
+document.querySelectorAll('.speed button').forEach(b => b.addEventListener('click', () => {
+  speed = +b.dataset.s; document.querySelectorAll('.speed button').forEach(x => x.classList.toggle('on', x === b));
+}));
+
+// появление блоков и счётчики
+const io = new IntersectionObserver(es => es.forEach(e => {
+  if (!e.isIntersecting) return;
+  e.target.classList.add('in'); io.unobserve(e.target);
+  e.target.querySelectorAll('[data-n]').forEach(n => {
+    const to = +n.dataset.n, dg = +(n.dataset.d || 0), t0 = performance.now();
+    (function tick(now) {
+      const k = Math.min(1, (now - t0) / 1400), v = to * (1 - Math.pow(1 - k, 4));
+      n.textContent = v.toLocaleString('ru-RU', {minimumFractionDigits: dg, maximumFractionDigits: dg});
+      if (k < 1) requestAnimationFrame(tick);
+    })(t0);
+  });
+}), {threshold: .18});
+document.querySelectorAll('.reveal').forEach((e, i) => { e.style.transitionDelay = (i % 4) * 70 + 'ms'; io.observe(e); });
+
+/* ---------- время ---------- */
+const now0 = new Date(), midnight = new Date(now0.getFullYear(), now0.getMonth(), now0.getDate()).getTime();
+let Tm = (Date.now() - midnight) / 1000, lastT = performance.now();
+const deg = r => (r * 57.29577951 % 360).toFixed(2);
+const pad = n => String(n).padStart(2, '0');
+const ease = k => k * k * (3 - 2 * k);
+const RATES = AX.map(g => g.rate).concat([0, 0]);
+function fmtRate(i) {
+  if (i === 5) return '5 тиков/с';
+  if (i === 6) return '2,5 Гц';
+  const perHour = Math.abs(RATES[i]);
+  return perHour >= 60 ? (perHour / 60).toLocaleString('ru-RU') + ' об/мин' : perHour < 1 ? '1 об за 6 ч' : perHour.toLocaleString('ru-RU') + ' об/ч';
+}
+PARTS.forEach((p, i) => $('#rate' + i).textContent = fmtRate(i));
+
+function frame(now) {
+  const dt = Math.min(.1, (now - lastT) / 1000); lastT = now;
+  const real = (Date.now() - midnight) / 1000;
+  Tm = speed === 1 ? real : Tm + dt * speed;
+
+  // часы на странице: настоящее время, секундная стрелка идёт шагами по 1/5 секунды
+  const beat = real * 5, tick = (Math.floor(beat) + ease(Math.min(1, (beat % 1) / .35))) / 5;
+  const sA = tick * 6 % 360, mA = real / 60 * 6 % 360, hA = real / 3600 * 30 % 360;
+  const bal = Math.sin(real * TAU * 2.5) * 140;
+  for (const w of [W1, W2]) {
+    w.hs.setAttribute('transform', `rotate(${sA.toFixed(2)})`);
+    w.hm.setAttribute('transform', `rotate(${mA.toFixed(2)})`);
+    w.hh.setAttribute('transform', `rotate(${hA.toFixed(2)})`);
+    w.hb.setAttribute('transform', `rotate(${bal.toFixed(1)})`);
+  }
+  const d = new Date();
+  if (W1.date.textContent !== String(d.getDate())) { W1.date.textContent = W2.date.textContent = d.getDate(); }
+  $('#digital').textContent = `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+
+  // механизм: на скорости ×1 колёса идут теми же шагами, что и в настоящих часах
+  let T = Tm;
+  if (speed === 1) { const b = Tm * 5; T = (Math.floor(b) + ease(Math.min(1, (b % 1) / .35))) / 5; }
+  const th1 = TAU * T / 3600;
+  for (let i = 0; i < 5; i++) {
+    const g = AX[i], a = th1 * g.rate;
+    $('#ax' + i).setAttribute('transform', `translate(${g.x.toFixed(2)} ${g.y.toFixed(2)}) rotate(${deg(a)})`);
+    if (i) $('#pn' + i).setAttribute('transform', `translate(${g.x.toFixed(2)} ${g.y.toFixed(2)}) rotate(${deg(a + g.phi)})`);
+  }
+  const b5 = real * 5, side = Math.floor(b5) % 2 ? 1 : -1, sw = ease(Math.min(1, (b5 % 1) / .3));
+  const fa = FB * 57.2958 + side * 9 * (2 * sw - 1) * -1;
+  $('#fork').setAttribute('transform', `translate(${FORK.x.toFixed(2)} ${FORK.y.toFixed(2)}) rotate(${fa.toFixed(2)})`);
+  $('#bal').setAttribute('transform', `translate(${BAL.x.toFixed(2)} ${BAL.y.toFixed(2)}) rotate(${bal.toFixed(1)})`);
+  const tm = ((Tm % 86400) + 86400) % 86400;
+  $('#mclock').textContent = `${pad(tm / 3600 | 0)}:${pad(tm / 60 % 60 | 0)}:${pad(tm % 60 | 0)}` + (speed > 1 ? '  · ускорено' : '  · сейчас');
+
+  // цена докручивается плавно
+  if (Math.abs(shown - target) > .5) { shown += (target - shown) * .16; $('#total').textContent = rub(shown); }
+  else if (shown !== target) { shown = target; $('#total').textContent = rub(shown); }
+  requestAnimationFrame(frame);
+}
+$('#total').textContent = rub(BASE);
+addEventListener('scroll', () => {
+  const y = scrollY;
+  if (y < innerHeight * 1.2) $('#giant').style.transform = `translateY(calc(-58% + ${y * .28}px))`;
+}, {passive: true});
+requestAnimationFrame(frame);
+</script>
+</body>
+</html>

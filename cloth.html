@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ткань · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--mute:#a09c8f;--acc:#ffd84d;--line:rgba(242,238,227,.2)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:radial-gradient(circle at 50% 40%,#1c1a15,#0c0c0b 70%);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{touch-action:none;position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;color:var(--mute);max-width:66ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(12,12,11,.55);color:var(--ink);padding:9px 14px;border-radius:999px;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.6)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stat{color:var(--mute);font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Ткань</h1>
+    <p>Тяните полотно мышью. С зажатым Shift мышь режет. Если дёрнуть слишком сильно – порвётся.</p>
+  </div>
+  <nav class="nav"><a href="patterns.html">← Назад</a><a href="index.html">Все демо</a><a href="fireworks.html">Дальше →</a></nav>
+</div>
+<div class="bar">
+  <button class="pill on" id="bWind">Ветер</button>
+  <button class="pill" id="bCol">Цвет: золото</button>
+  <button class="pill" id="bDrop">Отпустить</button>
+  <button class="pill" id="bNew">Заново</button>
+  <span class="stat" id="stat"></span>
+</div>
+<script>
+const cv = document.getElementById('c'), ctx = cv.getContext('2d');
+const COLS = 46, ROWS = 30, NP = COLS * ROWS;
+const X = new Float32Array(NP), Y = new Float32Array(NP), Z = new Float32Array(NP), PX = new Float32Array(NP), PY = new Float32Array(NP), PZ = new Float32Array(NP);
+const pin = new Uint8Array(NP), AX = new Float32Array(NP), AY = new Float32Array(NP);
+const hOk = new Uint8Array(NP), vOk = new Uint8Array(NP);       // целы ли нити вправо и вниз от точки
+let cons = [], SP = 14, W = 0, H = 0, D = 1, wind = true, t = 0;
+const PAL = [['золото', [214, 170, 72]], ['алый', [196, 52, 58]], ['синий', [58, 98, 190]], ['лён', [214, 204, 180]]];
+let pal = 0;
+
+function build() {
+  SP = Math.min(W * .56 / (COLS - 1), H * .58 / (ROWS - 1));
+  const x0 = -SP * (COLS - 1) / 2, y0 = -H * .32;
+  cons = [];
+  for (let r = 0; r < ROWS; r++) for (let c = 0; c < COLS; c++) {
+    const i = r * COLS + c;
+    X[i] = PX[i] = x0 + c * SP; Y[i] = PY[i] = y0 + r * SP; Z[i] = PZ[i] = Math.sin(c * .7) * 6 * D;
+    pin[i] = r === 0 && (c % 5 === 0 || c === COLS - 1) ? 1 : 0; AX[i] = X[i]; AY[i] = Y[i];
+    hOk[i] = c < COLS - 1 ? 1 : 0; vOk[i] = r < ROWS - 1 ? 1 : 0;
+    if (c < COLS - 1) cons.push([i, i + 1, SP, 1, 0]);          // [точка, точка, длина, тип, порвана]
+    if (r < ROWS - 1) cons.push([i, i + COLS, SP, 2, 0]);
+    if (c < COLS - 1 && r < ROWS - 1) { cons.push([i, i + COLS + 1, SP * 1.4142, 0, 0]); cons.push([i + 1, i + COLS, SP * 1.4142, 0, 0]); }
+  }
+}
+function resize() { D = Math.min(2, devicePixelRatio || 1); W = cv.width = Math.round(innerWidth * D); H = cv.height = Math.round(innerHeight * D); build(); }
+addEventListener('resize', resize);
+
+const F = 1400;
+const proj = i => { const f = F * D / (F * D + Z[i]); return [W / 2 + X[i] * f, H / 2 + Y[i] * f]; };
+let grab = -1, mx = 0, my = 0, lmx = 0, lmy = 0, down = false, cut = false;
+function nearest(x, y, lim) { let b = -1, bd = lim * lim; for (let i = 0; i < NP; i++) { const [sx, sy] = proj(i), d = (sx - x) ** 2 + (sy - y) ** 2; if (d < bd) { bd = d; b = i; } } return b; }
+function snip(c) { c[4] = 1; if (c[3] === 1) hOk[c[0]] = 0; else if (c[3] === 2) vOk[c[0]] = 0; }
+cv.addEventListener('pointerdown', e => {
+  down = true; mx = lmx = e.clientX * D; my = lmy = e.clientY * D; cut = e.shiftKey || e.button === 2;
+  if (!cut) grab = nearest(mx, my, 46 * D);
+  cv.setPointerCapture(e.pointerId);
+});
+cv.addEventListener('pointermove', e => { lmx = mx; lmy = my; mx = e.clientX * D; my = e.clientY * D; cut = down && (e.shiftKey || (e.buttons & 2) > 0); if (cut) grab = -1; });
+cv.addEventListener('pointerup', () => { down = false; grab = -1; });
+cv.addEventListener('contextmenu', e => e.preventDefault());
+
+function step() {
+  t += .016;
+  const gust = wind ? .5 + .5 * Math.sin(t * .9) * Math.sin(t * .37 + 1) : 0;
+  for (let i = 0; i < NP; i++) {
+    if (pin[i]) continue;
+    const c = i % COLS, r = i / COLS | 0;
+    // ветер давит на ткань тем сильнее, чем прямее она к нему повёрнута
+    let wz = 0, wx = 0;
+    if (wind && c > 0 && c < COLS - 1 && r > 0 && r < ROWS - 1) {
+      const ax = X[i + 1] - X[i - 1], az = Z[i + 1] - Z[i - 1], by = Y[i + COLS] - Y[i - COLS], bz = Z[i + COLS] - Z[i - COLS];
+      const nz = ax * by, nx = -az * by, nl = Math.hypot(nx, nz, ax * bz) + 1e-6;
+      const push = (nz / nl) * (.34 * gust + .1 * Math.sin(t * 2.3 + c * .35 + r * .2)) * D;
+      wz = push * Math.abs(nz / nl); wx = push * .35;
+    }
+    const vx = (X[i] - PX[i]) * .988 + wx, vy = (Y[i] - PY[i]) * .988 + .34 * D, vz = (Z[i] - PZ[i]) * .988 + wz;
+    PX[i] = X[i]; PY[i] = Y[i]; PZ[i] = Z[i]; X[i] += vx; Y[i] += vy; Z[i] += vz;
+  }
+  if (grab >= 0) { const f = (F * D + Z[grab]) / (F * D); X[grab] = (mx - W / 2) * f; Y[grab] = (my - H / 2) * f; }
+  for (let k = 0; k < 4; k++) for (const c of cons) {
+    if (c[4]) continue;
+    const a = c[0], b = c[1], dx = X[b] - X[a], dy = Y[b] - Y[a], dz = Z[b] - Z[a], d = Math.sqrt(dx * dx + dy * dy + dz * dz) + 1e-6;
+    if (d > c[2] * 3.4 && grab >= 0) { snip(c); continue; }
+    const q = (d - c[2]) / d * .5, wa = pin[a] || a === grab ? 0 : pin[b] || b === grab ? 2 : 1, wb = pin[b] || b === grab ? 0 : pin[a] || a === grab ? 2 : 1;
+    X[a] += dx * q * wa; Y[a] += dy * q * wa; Z[a] += dz * q * wa; X[b] -= dx * q * wb; Y[b] -= dy * q * wb; Z[b] -= dz * q * wb;
+  }
+  for (let i = 0; i < NP; i++) if (pin[i]) { X[i] = AX[i]; Y[i] = AY[i]; Z[i] = 0; }
+  if (cut) for (const c of cons) {
+    if (c[4]) continue;
+    const [ax, ay] = proj(c[0]), [bx, by] = proj(c[1]), px = (ax + bx) / 2, py = (ay + by) / 2;
+    const vx = mx - lmx, vy = my - lmy, l2 = vx * vx + vy * vy || 1, k = Math.max(0, Math.min(1, ((px - lmx) * vx + (py - lmy) * vy) / l2));
+    if ((px - lmx - vx * k) ** 2 + (py - lmy - vy * k) ** 2 < (9 * D) ** 2) snip(c);
+  }
+}
+
+const quads = [], LX = -.38, LY = -.46, LZ = -.8;
+function draw() {
+  ctx.clearRect(0, 0, W, H);
+  ctx.strokeStyle = '#b9b3a2'; ctx.lineWidth = 3 * D; ctx.lineCap = 'round';
+  ctx.beginPath(); ctx.moveTo(W / 2 + AX[0] - 26 * D, H / 2 + AY[0] - 5 * D); ctx.lineTo(W / 2 + AX[COLS - 1] + 26 * D, H / 2 + AY[COLS - 1] - 5 * D); ctx.stroke();
+  quads.length = 0;
+  for (let r = 0; r < ROWS - 1; r++) for (let c = 0; c < COLS - 1; c++) {
+    const i = r * COLS + c;
+    if (!hOk[i] || !vOk[i] || !hOk[i + COLS] || !vOk[i + 1]) continue;
+    quads.push([Z[i] + Z[i + 1] + Z[i + COLS] + Z[i + COLS + 1], i, c]);
+  }
+  quads.sort((a, b) => b[0] - a[0]);
+  const base = PAL[pal][1];
+  for (const [, i, c] of quads) {
+    const j = i + 1, k = i + COLS + 1, l = i + COLS;
+    const ux = X[j] - X[i], uy = Y[j] - Y[i], uz = Z[j] - Z[i], vx = X[l] - X[i], vy = Y[l] - Y[i], vz = Z[l] - Z[i];
+    let nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx; const nl = Math.hypot(nx, ny, nz) + 1e-6;
+    const dif = Math.abs((nx * LX + ny * LY + nz * LZ) / nl), b = (.3 + .72 * dif + .45 * Math.pow(dif, 10)) * (c % 4 < 2 ? 1 : .9);
+    const col = `rgb(${Math.min(255, base[0] * b + 255 * Math.pow(dif, 26) * .4) | 0},${Math.min(255, base[1] * b + 255 * Math.pow(dif, 26) * .4) | 0},${Math.min(255, base[2] * b + 255 * Math.pow(dif, 26) * .35) | 0})`;
+    const [x1, y1] = proj(i), [x2, y2] = proj(j), [x3, y3] = proj(k), [x4, y4] = proj(l);
+    ctx.fillStyle = ctx.strokeStyle = col; ctx.lineWidth = 1;
+    ctx.beginPath(); ctx.moveTo(x1, y1); ctx.lineTo(x2, y2); ctx.lineTo(x3, y3); ctx.lineTo(x4, y4); ctx.closePath(); ctx.fill(); ctx.stroke();
+  }
+  ctx.fillStyle = '#e8e2d0';
+  for (let c = 0; c < COLS; c++) if (pin[c]) { const [x, y] = proj(c); ctx.beginPath(); ctx.arc(x, y - 3 * D, 4.5 * D, 0, 7); ctx.fill(); }
+}
+
+const tog = (id, fn) => document.getElementById(id).addEventListener('click', fn);
+tog('bWind', e => { wind = !wind; e.currentTarget.classList.toggle('on', wind); });
+tog('bCol', e => { pal = (pal + 1) % PAL.length; e.currentTarget.textContent = 'Цвет: ' + PAL[pal][0]; });
+tog('bDrop', () => pin.fill(0));
+tog('bNew', build);
+
+const stat = document.getElementById('stat');
+let last = performance.now(), acc = 0, frames = 0, fpsT = last;
+function frame(now) {
+  acc += Math.min(50, now - last); last = now;
+  let n = 0; while (acc >= 16.6 && n < 2) { step(); acc -= 16.6; n++; } if (n === 2) acc = 0;
+  draw(); frames++;
+  if (now - fpsT > 500) { stat.textContent = `${NP} узлов · ${cons.filter(c => !c[4]).length} нитей · ${Math.round(frames * 1000 / (now - fpsT))} кадров/с`; frames = 0; fpsT = now; }
+  requestAnimationFrame(frame);
+}
+resize(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>

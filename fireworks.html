@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Салют · Fable 5.2</title>
+<style>
+:root{--bg:#05060d;--ink:#f2eee3;--mute:#a9a698;--acc:#ffd84d;--line:rgba(242,238,227,.22)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{touch-action:none;position:fixed;left:0;top:0;width:100%;height:100%;display:block}
+#fx{cursor:crosshair}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;color:var(--mute);max-width:66ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(5,6,13,.55);color:var(--ink);padding:9px 14px;border-radius:999px;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.6)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stat{color:var(--mute);font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px}
+.stat b{color:var(--acc);font-weight:500}
+</style>
+</head>
+<body>
+<canvas id="bg"></canvas><canvas id="fx"></canvas>
+<div class="hud">
+  <div>
+    <h1>Салют</h1>
+    <p>Кликните по небу – туда полетит залп. Напечатайте слово и нажмите Enter – салют напишет его огнями.</p>
+  </div>
+  <nav class="nav"><a href="cloth.html">← Назад</a><a href="index.html">Все демо</a><a href="flyover.html">Дальше →</a></nav>
+</div>
+<div class="bar">
+  <button class="pill" id="bKind">Залп: разный</button>
+  <button class="pill on" id="bAuto">Шоу само</button>
+  <button class="pill" id="bSnd">Звук выключен</button>
+  <span class="stat" id="stat"></span>
+</div>
+<script>
+const bg = document.getElementById('bg'), fx = document.getElementById('fx');
+const b = bg.getContext('2d'), c = fx.getContext('2d');
+const TAU = Math.PI * 2, rnd = (a, z) => a + Math.random() * (z - a);
+let W = 0, H = 0, D = 1, HOR = 0;
+const KINDS = ['mix', 'peony', 'ring', 'heart', 'willow', 'crackle'], KN = {mix: 'разный', peony: 'шар', ring: 'кольцо', heart: 'сердце', willow: 'ива', crackle: 'искры'};
+let kind = 'mix', auto = true, snd = false, word = '';
+let shells = [], parts = [];
+
+function drawBg() {
+  const g = b.createLinearGradient(0, 0, 0, HOR);
+  g.addColorStop(0, '#04050c'); g.addColorStop(.7, '#0a1024'); g.addColorStop(1, '#1a1c38');
+  b.fillStyle = g; b.fillRect(0, 0, W, HOR);
+  for (let i = 0; i < 260; i++) { b.fillStyle = `rgba(230,236,255,${rnd(.15, .8)})`; const s = rnd(.6, 1.8) * D; b.fillRect(Math.random() * W, Math.random() * HOR * .9, s, s); }
+  b.fillStyle = '#03040a'; b.beginPath(); b.moveTo(0, HOR);       // холмы на горизонте
+  for (let x = 0; x <= W; x += 6 * D) b.lineTo(x, HOR - (10 + 16 * Math.sin(x * .0018 / D + 1) + 9 * Math.sin(x * .006 / D)) * D * (.4 + .6 * Math.abs(Math.sin(x * .0007 / D))));
+  b.lineTo(W, HOR); b.fill();
+  const w = b.createLinearGradient(0, HOR, 0, H); w.addColorStop(0, '#0b1022'); w.addColorStop(1, '#020308');
+  b.fillStyle = w; b.fillRect(0, HOR, W, H - HOR);
+}
+function resize() {
+  D = Math.min(2, devicePixelRatio || 1);
+  W = bg.width = fx.width = Math.round(innerWidth * D); H = bg.height = fx.height = Math.round(innerHeight * D);
+  HOR = Math.round(H * .76); drawBg();
+}
+addEventListener('resize', resize); resize();
+
+// звук: взрыв – это шум через фильтр, который быстро закрывается
+let ac = null;
+function boom(x, size) {
+  if (!snd || !ac) return;
+  const t = ac.currentTime, n = ac.sampleRate * .9 | 0, buf = ac.createBuffer(1, n, ac.sampleRate), d = buf.getChannelData(0);
+  for (let i = 0; i < n; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / n, 2.4);
+  const s = ac.createBufferSource(); s.buffer = buf;
+  const f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.setValueAtTime(1800 * size, t); f.frequency.exponentialRampToValueAtTime(70, t + .7);
+  const g = ac.createGain(); g.gain.value = .35 * size;
+  const p = ac.createStereoPanner(); p.pan.value = Math.max(-1, Math.min(1, x / W * 2 - 1));
+  s.connect(f).connect(g).connect(p).connect(ac.destination); s.start();
+}
+
+function launch(x, y, k, text) {
+  const x0 = x + rnd(-60, 60) * D, T = rnd(52, 66);
+  shells.push({x: x0, y: HOR - 4, vx: (x - x0) / T, vy: (y - HOR) / T * 1.9, t: 0, T, tx: x, ty: y, k, text, hue: Math.random() * 360 | 0});
+}
+function spark(x, y, vx, vy, hue, life, o) {
+  if (parts.length > 9000) return;
+  parts.push(Object.assign({x, y, vx, vy, hue, life, max: life, g: .045, drag: .975, s: 2.2, lit: 62}, o));
+}
+function textPoints(t) {
+  const o = document.createElement('canvas'), q = o.getContext('2d'), fs = 150;
+  q.font = `800 ${fs}px "Helvetica Neue",Arial,sans-serif`;
+  const w = Math.ceil(q.measureText(t).width) + 20; o.width = w; o.height = fs * 1.4;
+  q.font = `800 ${fs}px "Helvetica Neue",Arial,sans-serif`; q.textBaseline = 'middle'; q.fillStyle = '#fff'; q.fillText(t, 10, fs * .7);
+  const d = q.getImageData(0, 0, w, o.height).data, pts = [];
+  for (let y = 0; y < o.height; y += 5) for (let x = 0; x < w; x += 5) if (d[(y * w + x) * 4 + 3] > 128) pts.push([x - w / 2, y - fs * .7]);
+  return {pts, w};
+}
+function explode(s) {
+  const k = s.k === 'mix' ? KINDS[1 + Math.random() * 5 | 0] : s.k, x = s.tx, y = s.ty, h = s.hue;
+  boom(x, k === 'text' ? 1.2 : rnd(.6, 1));
+  if (k === 'text') {
+    const {pts, w} = textPoints(s.text), sc = Math.min(1.1 * D, W * .86 / w);
+    for (const [px, py] of pts) spark(x, y, 0, 0, h + rnd(-12, 12), rnd(150, 190), {tx: x + px * sc, ty: y + py * sc, g: .012, drag: .9, s: 2.6});
+    return;
+  }
+  const n = k === 'willow' ? 260 : k === 'ring' ? 150 : 330, sp = rnd(5.5, 8) * D;
+  for (let i = 0; i < n; i++) {
+    let a = Math.random() * TAU, v = sp * Math.cbrt(Math.random());
+    if (k === 'ring') { a = i / n * TAU; v = sp * rnd(.96, 1.04); }
+    let vx = Math.cos(a) * v, vy = Math.sin(a) * v;
+    if (k === 'ring') vy *= .45;
+    if (k === 'heart') { const t = i / n * TAU, q = sp * .062; vx = 16 * Math.pow(Math.sin(t), 3) * q; vy = -(13 * Math.cos(t) - 5 * Math.cos(2 * t) - 2 * Math.cos(3 * t) - Math.cos(4 * t)) * q; }
+    if (k === 'willow') spark(x, y, vx * .75, vy * .75, 42 + rnd(-6, 8), rnd(130, 190), {g: .06, drag: .985, s: 1.8, lit: 68, trail: 1});
+    else if (k === 'crackle') spark(x, y, vx, vy, h + (i % 2 ? 0 : 150), rnd(50, 80), {pop: 1});
+    else spark(x, y, vx, vy, k === 'heart' ? 338 + rnd(-8, 8) : h + (i % 3 ? 0 : 40), rnd(70, 110), {});
+  }
+  for (let i = 0; i < 26; i++) { const a = Math.random() * TAU, v = rnd(1, 3) * D; spark(x, y, Math.cos(a) * v, Math.sin(a) * v, 50, 26, {lit: 92, s: 3}); }
+}
+
+function step() {
+  for (const s of shells) {
+    s.t++; s.x += s.vx; s.y += s.vy; s.vy *= .972;
+    spark(s.x, s.y, rnd(-.3, .3), rnd(.2, 1), 40, 16, {g: 0, lit: 80, s: 1.8});
+    if (s.t >= s.T || s.vy > -.5 * D) { s.dead = 1; s.tx = s.x; s.ty = s.y; explode(s); }
+  }
+  shells = shells.filter(s => !s.dead);
+  for (const p of parts) {
+    if (p.tx !== undefined && p.max - p.life < 70) { p.vx += (p.tx - p.x) * .02; p.vy += (p.ty - p.y) * .02; }
+    else p.vy += p.g * D;
+    p.vx *= p.drag; p.vy *= p.drag; p.x += p.vx; p.y += p.vy; p.life--;
+    if (p.pop && p.life === 1) for (let i = 0; i < 5; i++) { const a = Math.random() * TAU; spark(p.x, p.y, Math.cos(a) * 1.6 * D, Math.sin(a) * 1.6 * D, 48, 18, {lit: 90, s: 1.6, g: .02}); }
+  }
+  parts = parts.filter(p => p.life > 0 && p.y < HOR);
+}
+function draw(t) {
+  c.globalCompositeOperation = 'destination-out'; c.fillStyle = 'rgba(0,0,0,.2)'; c.fillRect(0, 0, W, HOR);
+  c.clearRect(0, HOR, W, H - HOR);
+  c.globalCompositeOperation = 'lighter';
+  for (const p of parts) {
+    const k = p.life / p.max, fl = p.trail || k > .35 ? 1 : (Math.random() > .4 ? 1 : .2);
+    c.fillStyle = `hsla(${p.hue},100%,${p.lit}%,${Math.min(1, k * 1.6) * fl})`;
+    const s = p.s * D * (.6 + .4 * k); c.fillRect(p.x - s / 2, p.y - s / 2, s, s);
+  }
+  // отражение в воде: полоски неба, перевёрнутые и чуть сдвинутые волной
+  c.globalCompositeOperation = 'source-over'; c.globalAlpha = .42;
+  const sl = 3 * D | 0;
+  for (let y = 0; y < H - HOR; y += sl) {
+    const k = y / (H - HOR), off = Math.sin(y * .22 / D + t * .003) * (2 + 9 * k) * D;
+    c.drawImage(fx, 0, HOR - y * 1.6 - sl, W, sl, off, HOR + y, W, sl);
+  }
+  c.globalAlpha = 1;
+}
+
+fx.addEventListener('pointerdown', e => { if (e.clientY * D < HOR) launch(e.clientX * D, e.clientY * D, kind); });
+addEventListener('keydown', e => {
+  if (e.metaKey || e.ctrlKey || e.altKey) return;
+  if (e.key === 'Enter') { if (word.trim()) launch(W / 2, H * .3, 'text', word.trim()); word = ''; }
+  else if (e.key === 'Backspace') word = word.slice(0, -1);
+  else if (e.key.length === 1) word = (word + e.key).slice(0, 14);
+  else return;
+  e.preventDefault(); hint();
+});
+const stat = document.getElementById('stat');
+const hint = () => stat.innerHTML = word ? `слово: <b>${word.replace(/</g, '&lt;')}</b> · Enter – запустить` : 'печатайте слово прямо так, без поля ввода';
+hint();
+document.getElementById('bKind').addEventListener('click', e => { kind = KINDS[(KINDS.indexOf(kind) + 1) % KINDS.length]; e.currentTarget.textContent = 'Залп: ' + KN[kind]; });
+document.getElementById('bAuto').addEventListener('click', e => { auto = !auto; e.currentTarget.classList.toggle('on', auto); });
+document.getElementById('bSnd').addEventListener('click', e => {
+  snd = !snd; if (snd && !ac) ac = new (window.AudioContext || window.webkitAudioContext)(); if (ac) ac.resume();
+  e.currentTarget.classList.toggle('on', snd); e.currentTarget.textContent = snd ? 'Звук включён' : 'Звук выключен';
+});
+
+let last = performance.now(), acc = 0, nextAuto = 600;
+function frame(now) {
+  const dt = Math.min(60, now - last); last = now; acc += dt;
+  if (auto && (nextAuto -= dt) < 0) { launch(rnd(.12, .88) * W, rnd(.14, .5) * H, kind); nextAuto = rnd(350, 1300); }
+  let n = 0; while (acc >= 16.6 && n < 3) { step(); acc -= 16.6; n++; } if (n === 3) acc = 0;
+  draw(now);
+  requestAnimationFrame(frame);
+}
+launch(W * .3, H * .32, 'heart'); launch(W * .68, H * .26, 'willow');
+requestAnimationFrame(frame);
+if (location.search.includes('shot')) { auto = false; shells = []; parts = []; launch(W / 2, H * .3, 'text', 'Fable 5.2'); launch(W * .18, H * .36, 'heart'); launch(W * .83, H * .3, 'willow'); for (let i = 0; i < 118; i++) { step(); draw(i * 16); } }
+</script>
+</body>
+</html>
