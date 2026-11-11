@@ -1,0 +1,167 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Песочная анимация · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--acc:#ffd84d;--line:rgba(242,238,227,.3)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{touch-action:none;position:fixed;inset:0;width:100%;height:100%;display:block;cursor:crosshair}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.7)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;max-width:58ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(12,12,11,.6);color:var(--ink);padding:9px 14px;border-radius:999px;text-shadow:none;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.7)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stat{font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px;text-shadow:0 1px 10px rgba(0,0,0,.9)}
+.cap{position:fixed;z-index:4;left:0;top:0;pointer-events:none;transform:translate(-50%,0);font:500 26px/1.2 Charter,"Iowan Old Style","PT Serif",Georgia,serif;color:#f6ecd6;text-shadow:0 2px 14px rgba(0,0,0,.9);white-space:nowrap;transition:opacity .8s}
+.code{position:fixed;z-index:4;right:28px;top:120px;bottom:76px;width:min(380px,34vw);overflow:hidden;margin:0;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:rgba(12,12,11,.72);
+  font:11.5px/1.5 ui-monospace,"SF Mono",Menlo,monospace;color:#d9d2c2;white-space:pre-wrap;word-break:break-word;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.code b{color:var(--acc);font-weight:500}
+.code[hidden]{display:none}
+.err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:40px;text-align:center}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Песочная анимация</h1>
+    <p>Стол с подсветкой и девяносто тысяч песчинок. Каждая картина пересыпается в следующую, будто по стеклу ведут рукой. Это не видео: справа – код, который рисует сцену. По песку можно рисовать пальцем.</p>
+  </div>
+  <nav class="nav"><a href="sweater.html">← Назад</a><a href="index.html">Все демо</a><a href="pinball.html">Дальше →</a></nav>
+</div>
+<div class="cap" id="cap"></div>
+<pre class="code" id="code"></pre>
+<div class="bar">
+  <button class="pill on" id="play">Пауза</button><button class="pill" id="next">Дальше</button><button class="pill on" id="showcode">Код</button><button class="pill on" id="snd">Звук</button>
+  <span class="stat" id="stat"></span>
+</div>
+<div class="err" id="err">Этому демо нужен WebGL 2. Откройте его в свежем Chrome или Safari.</div>
+<script>
+'use strict';
+// ---------- Сцены: каждая рисуется на маленьком холсте; чёрное – песок, белое – чистое стекло ----------
+const sand = (g, a) => { g.fillStyle = g.strokeStyle = `rgba(0,0,0,${a})`; }, wipe = g => { g.fillStyle = g.strokeStyle = '#fff'; };
+function ground(g) { sand(g, .85); g.beginPath(); g.moveTo(0, 200); for (let x = 0; x <= 320; x += 16) g.lineTo(x, 152 + 5 * Math.sin(x * .045)); g.lineTo(320, 200); g.fill(); }
+function sun(g, r) { sand(g, .8); g.lineWidth = 4; g.beginPath(); g.arc(60, 46, r, 0, 7); g.stroke();
+  for (let i = 0; i < 12; i++) { const a = i * .5236; g.beginPath(); g.moveTo(60 + Math.cos(a) * (r + 6), 46 + Math.sin(a) * (r + 6)); g.lineTo(60 + Math.cos(a) * (r + 15), 46 + Math.sin(a) * (r + 15)); g.stroke(); } }
+function tree(g, x, k, dark) { sand(g, dark); g.beginPath(); g.moveTo(x - 12 * k, 158); g.quadraticCurveTo(x - 2 * k, 120, x - 8 * k, 158 - 74 * k); g.lineTo(x + 10 * k, 158 - 74 * k); g.quadraticCurveTo(x + 4 * k, 120, x + 16 * k, 158); g.fill();
+  sand(g, dark * .85); for (const [dx, dy, r] of [[0, -96, 34], [-32, -80, 24], [34, -82, 26], [-14, -118, 22], [22, -116, 22]]) { g.beginPath(); g.arc(x + dx * k, 158 + dy * k, r * k, 0, 7); g.fill(); }
+  wipe(g); g.lineWidth = 2.5 * k; for (const [dx, dy] of [[-28, -92], [28, -98], [0, -122]]) { g.beginPath(); g.moveTo(x, 158 - 74 * k); g.quadraticCurveTo(x + dx * k / 2 + 6 * k, 158 + (dy - 74) * k / 2, x + dx * k, 158 + dy * k); g.stroke(); } }
+function home(g, dark) { sand(g, dark); g.fillRect(200, 106, 84, 50); g.beginPath(); g.moveTo(190, 108); g.lineTo(242, 70); g.lineTo(294, 108); g.fill(); g.fillRect(262, 76, 10, 20);
+  wipe(g); g.fillRect(212, 118, 16, 16); g.fillRect(254, 118, 16, 16); sand(g, dark); g.fillRect(219, 118, 2, 16); g.fillRect(212, 125, 16, 2); g.fillRect(261, 118, 2, 16); g.fillRect(254, 125, 16, 2); }
+const SCENES = [
+  { text: 'Жило-было семечко.', draw: function seed(g) { ground(g); sun(g, 12); wipe(g); g.beginPath(); g.ellipse(160, 174, 10, 6, -.4, 0, 7); g.fill(); } },
+  { text: 'Однажды оно проснулось.', draw: function sprout(g) { ground(g); sun(g, 17); sand(g, .9); g.lineWidth = 5;
+      g.beginPath(); g.moveTo(160, 172); g.quadraticCurveTo(152, 142, 160, 112); g.stroke();
+      g.beginPath(); g.ellipse(146, 120, 16, 7, .5, 0, 7); g.fill(); g.beginPath(); g.ellipse(175, 110, 16, 7, -.6, 0, 7); g.fill(); } },
+  { text: 'И стало деревом.', draw: function grown(g) { ground(g); sun(g, 17); tree(g, 160, 1, .95); } },
+  { text: 'Рядом с деревом поставили дом.', draw: function village(g) { ground(g); tree(g, 96, .82, .95); home(g, .9);
+      sand(g, .55); g.lineWidth = 3; g.beginPath(); for (let i = 0; i < 40; i++) { const y = 70 - i * 1.4, x = 268 + Math.sin(i * .45) * (3 + i * .35); i ? g.lineTo(x, y) : g.moveTo(x, y); } g.stroke(); } },
+  { text: 'А ночью им светила луна.', draw: function night(g) { sand(g, .78); g.fillRect(0, 0, 320, 170); ground(g); tree(g, 96, .82, .99); home(g, .99);
+      wipe(g); g.beginPath(); g.arc(236, 40, 21, 0, 7); g.fill(); sand(g, .78); g.beginPath(); g.arc(246, 34, 19, 0, 7); g.fill();
+      wipe(g); for (let i = 0; i < 26; i++) { g.beginPath(); g.arc((i * 73 + 20) % 320, (i * 41 + 9) % 96, i % 5 ? 1.3 : 2.2, 0, 7); g.fill(); } } }
+];
+
+const cv = document.getElementById('c'), gl = cv.getContext('webgl2', { antialias: false, alpha: false }), $ = id => document.getElementById(id);
+if (!gl) $('err').style.display = 'flex';
+else (function () {
+  const prog = (vs, fs, names) => { const mk = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+    const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+    const u = {}; names.forEach(n => u[n] = gl.getUniformLocation(p, n)); return { p, u }; };
+  const pBG = prog('#version 300 es\nvoid main(){gl_Position=vec4(vec2(gl_VertexID&1,gl_VertexID>>1)*4.-1.,0,1);}', `#version 300 es
+precision highp float;
+uniform vec2 uRes, uSweep; uniform vec4 uRect; uniform float uT; out vec4 O;
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vn(vec2 x){ vec2 p = floor(x), f = fract(x); f = f * f * (3. - 2. * f); return mix(mix(h21(p), h21(p + vec2(1, 0)), f.x), mix(h21(p + vec2(0, 1)), h21(p + vec2(1, 1)), f.x), f.y); }
+void main(){
+  vec2 q = (gl_FragCoord.xy / uRes * 2. - 1. - uRect.xy) / uRect.zw, px = abs(q) * uRect.zw * uRes * .5, hs = uRect.zw * uRes * .5; float out_ = max(px.x - hs.x, px.y - hs.y); vec3 c;
+  if (out_ < 0.) { // матовое стекло с лампой под ним
+    c = vec3(1., .92, .76) * (1.08 - .3 * dot(q * vec2(.8, .9), q * vec2(.8, .9))) * (.97 + .05 * vn(gl_FragCoord.xy * .5));
+    c *= .72 + .28 * smoothstep(0., -26., out_);
+    c *= 1. - uSweep.y * .2 * exp(-pow((q.x - uSweep.x) / .4, 2.)); // тень руки над стеклом
+  } else if (out_ < hs.y * .09) { float g = vn(gl_FragCoord.xy * vec2(.02, .5)); c = mix(vec3(.2, .11, .05), vec3(.34, .2, .1), g) * (.7 + .3 * smoothstep(hs.y * .09, 0., out_)); }
+  else c = vec3(.05, .042, .036) + vec3(1., .8, .5) * .1 * exp(-(out_ - hs.y * .09) / (hs.y * .35));
+  O = vec4(pow(clamp(c, 0., 1.), vec3(.4545)), 1.);
+}`, ['uRes', 'uSweep', 'uRect', 'uT']);
+  const pPT = prog(`#version 300 es
+layout(location=0) in vec2 aFrom; layout(location=1) in vec2 aTo; layout(location=2) in vec2 aR;
+uniform float uK, uPx; uniform vec4 uRect; out float vS;
+void main(){ // песчинка летит по дуге; левые трогаются раньше – волна идёт слева направо, как ладонь
+  float tau = clamp((uK * 1.6 - aFrom.x * .5 - aR.x * .1) / .6, 0., 1.), e = tau * tau * (3. - 2. * tau); vec2 d = aTo - aFrom;
+  vec2 p = mix(aFrom, aTo, e) + vec2(-d.y, d.x) * sin(3.14159 * e) * (aR.x - .5) * .5 + vec2(0., -.03) * sin(3.14159 * e) * aR.y;
+  gl_Position = vec4(uRect.xy + (p * 2. - 1.) * uRect.zw * vec2(1., -1.), 0., 1.); gl_PointSize = uPx * (.75 + .6 * aR.y); vS = aR.y;
+}`, `#version 300 es
+precision highp float; in float vS; out vec4 O;
+void main(){ float d = length(gl_PointCoord - .5); if (d > .5) discard; O = vec4(mix(mix(vec3(.72, .63, .5), vec3(.83, .76, .66), vS), vec3(1.), smoothstep(.28, .5, d)), 1.); }`, ['uK', 'uPx', 'uRect']);
+
+  // песчинки
+  const N = 90000, cur = new Float32Array(N * 2), rnd = new Float32Array(N * 2);
+  for (let i = 0; i < N * 2; i++) { cur[i] = Math.random(); rnd[i] = Math.random(); }
+  const vao = gl.createVertexArray(); gl.bindVertexArray(vao);
+  const mkBuf = (loc, data, usage) => { const b = gl.createBuffer(); gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferData(gl.ARRAY_BUFFER, data, usage); gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0); return b; };
+  const bFrom = mkBuf(0, cur, gl.DYNAMIC_DRAW), bTo = mkBuf(1, cur, gl.DYNAMIC_DRAW); mkBuf(2, rnd, gl.STATIC_DRAW);
+  const put = (b, d) => { gl.bindBuffer(gl.ARRAY_BUFFER, b); gl.bufferSubData(gl.ARRAY_BUFFER, 0, d); };
+  // куда лечь песчинкам: точки выбираются тем чаще, чем темнее место на рисунке сцены
+  const sc = document.createElement('canvas'); sc.width = 320; sc.height = 200; const sg = sc.getContext('2d', { willReadFrequently: true });
+  function target(i) { sg.globalAlpha = 1; wipe(sg); sg.fillRect(0, 0, 320, 200); SCENES[i].draw(sg); const px = sg.getImageData(0, 0, 320, 200).data, cdf = new Float32Array(64000); let s = 0;
+    for (let k = 0; k < 64000; k++) { s += 1 - px[k * 4] / 255 + .035; cdf[k] = s; } const t = new Float32Array(N * 2);
+    for (let n = 0; n < N; n++) { const r = Math.random() * s; let lo = 0, hi = 63999; while (lo < hi) { const m = (lo + hi) >> 1; cdf[m] < r ? lo = m + 1 : hi = m; } t[n * 2] = (lo % 320 + Math.random()) / 320; t[n * 2 + 1] = (Math.floor(lo / 320) + Math.random()) / 200; }
+    return t; }
+  // соседние песчинки отправляем в соседние места, чтобы песок пересыпался, а не летал через весь стол
+  const spread = v => { v = (v | (v << 8)) & 0x00ff00ff; v = (v | (v << 4)) & 0x0f0f0f0f; v = (v | (v << 2)) & 0x33333333; return (v | (v << 1)) & 0x55555555; };
+  function order(a) { const k = new Float64Array(N); for (let i = 0; i < N; i++) k[i] = (spread(a[i * 2] * 1023 | 0) | (spread(a[i * 2 + 1] * 1023 | 0) << 1)) * 131072 + i; k.sort(); return k.map(v => v % 131072); }
+
+  let scene = -1, K = 1, hold = 0, auto = true, sndOn = true, T = 0, last = 0, to = cur.slice(), draw = null, rect = [0, 0, .5, .5], gpx = 300;
+  const cap = $('cap'), code = $('code');
+  function go(i) { scene = (i + SCENES.length) % SCENES.length; const tg = target(scene), A = order(cur), B = order(tg); to = new Float32Array(N * 2);
+    for (let r = 0; r < N; r++) { to[A[r] * 2] = tg[B[r] * 2]; to[A[r] * 2 + 1] = tg[B[r] * 2 + 1]; }
+    put(bFrom, cur); put(bTo, to); K = 0; hold = 0; cap.style.opacity = 0; setTimeout(() => { cap.textContent = SCENES[scene].text; cap.style.opacity = 1; }, 1600);
+    code.innerHTML = `<b>// сцена ${scene + 1} из ${SCENES.length}: «${SCENES[scene].text}»</b>\n` + SCENES[scene].draw.toString().replace(/</g, '&lt;') + `\n\n<b>// помощники</b>\n` + [ground, sun, tree, home].map(f => f.toString().replace(/</g, '&lt;')).join('\n'); }
+
+  // звук: шорох песка
+  let AC = null, gH;
+  function audio() { if (AC) return; AC = new (window.AudioContext || window.webkitAudioContext)(); const b = AC.createBuffer(1, AC.sampleRate * 2, AC.sampleRate), d = b.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+    const s = AC.createBufferSource(), f = AC.createBiquadFilter(); s.buffer = b; s.loop = true; f.type = 'bandpass'; f.frequency.value = 3400; f.Q.value = .6; gH = AC.createGain(); gH.gain.value = 0; s.connect(f); f.connect(gH); gH.connect(AC.destination); s.start(); }
+
+  // палец по песку: песчинки раздвигаются к краям борозды
+  const toTable = e => { const x = (e.clientX / innerWidth * 2 - 1 - rect[0]) / rect[2], y = (1 - e.clientY / innerHeight * 2 - rect[1]) / rect[3]; return [(x + 1) / 2, (1 - y) / 2]; };
+  function finger(x, y) { const r = .028; let ch = 0; for (let i = 0; i < N; i++) { const dx = (cur[i * 2] - x) * 1.6, dy = cur[i * 2 + 1] - y, d2 = dx * dx + dy * dy; if (d2 < r * r) { const d = Math.sqrt(d2) || 1e-4, k = r * (1 + Math.random() * .3) / d; cur[i * 2] = x + dx * k / 1.6; cur[i * 2 + 1] = y + dy * k; ch++; } } return ch; }
+  cv.addEventListener('pointerdown', e => { audio(); if (K < 1) return; const [x, y] = toTable(e); if (x < 0 || x > 1 || y < 0 || y > 1) return; cv.setPointerCapture(e.pointerId); draw = { x, y, v: 0 }; finger(x, y); put(bTo, cur); });
+  cv.addEventListener('pointermove', e => { if (!draw || K < 1) return; const [x, y] = toTable(e), n = Math.max(1, Math.ceil(Math.hypot((x - draw.x) * 1.6, y - draw.y) / .012));
+    for (let i = 1; i <= n; i++) finger(draw.x + (x - draw.x) * i / n, draw.y + (y - draw.y) * i / n); draw.v = 1; draw.x = x; draw.y = y; put(bTo, cur); hold = Math.min(hold, 2); });
+  addEventListener('pointerup', () => { draw = null; });
+  $('play').onclick = e => { audio(); auto = !auto; e.target.textContent = auto ? 'Пауза' : 'Играть'; e.target.classList.toggle('on', auto); };
+  $('next').onclick = () => { audio(); if (K >= 1) go(scene + 1); };
+  $('showcode').onclick = e => { code.hidden = !code.hidden; e.target.classList.toggle('on', !code.hidden); resize(); };
+  $('snd').onclick = e => { sndOn = !sndOn; e.target.classList.toggle('on', sndOn); if (sndOn) audio(); };
+  addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); $('next').click(); } });
+
+  function resize() { const d = Math.min(2, devicePixelRatio || 1); cv.width = Math.round(innerWidth * d); cv.height = Math.round(innerHeight * d);
+    const free = code.hidden ? innerWidth - 56 : innerWidth - Math.min(380, innerWidth * .34) - 84, w = Math.min(free, (innerHeight - 250) * 1.6), h = w / 1.6, cx = 28 + free / 2, cy = innerHeight * .54;
+    rect = [cx / innerWidth * 2 - 1, 1 - cy / innerHeight * 2, w / innerWidth, h / innerHeight]; gpx = w * d;
+    cap.style.left = cx + 'px'; cap.style.top = (cy + h / 2 + 14) + 'px'; cap.style.fontSize = Math.max(16, Math.min(26, w / 26)) + 'px'; }
+  addEventListener('resize', resize); resize(); go(0);
+  function frame(now) {
+    const dt = Math.min(.05, (now - last) / 1000 || .016); last = now; T += dt;
+    if (K < 1) { K = Math.min(1, K + dt / 4.4); if (K >= 1) { cur.set(to); put(bFrom, cur); } } else { hold += dt; if (auto && hold > 6.5 && !draw) go(scene + 1); }
+    if (AC) gH.gain.setTargetAtTime(sndOn ? (K < 1 ? .07 * Math.sin(Math.PI * K) : draw && draw.v ? .05 : 0) : 0, AC.currentTime, .08); if (draw) draw.v = 0;
+    $('stat').textContent = `сцена ${scene + 1} из ${SCENES.length} · ${N.toLocaleString('ru')} песчинок · пробел – дальше`;
+    gl.viewport(0, 0, cv.width, cv.height); gl.disable(gl.BLEND); gl.useProgram(pBG.p);
+    gl.uniform2f(pBG.u.uRes, cv.width, cv.height); gl.uniform4fv(pBG.u.uRect, rect); gl.uniform1f(pBG.u.uT, T); gl.uniform2f(pBG.u.uSweep, K * 3.2 - 1.6, K < 1 ? Math.sin(Math.PI * K) : 0); gl.drawArrays(gl.TRIANGLES, 0, 3);
+    gl.enable(gl.BLEND); gl.blendFunc(gl.DST_COLOR, gl.ZERO); gl.useProgram(pPT.p); gl.bindVertexArray(vao);
+    gl.uniform1f(pPT.u.uK, K); gl.uniform1f(pPT.u.uPx, Math.max(1.5, gpx / 320 * 1.75)); gl.uniform4fv(pPT.u.uRect, rect); gl.drawArrays(gl.POINTS, 0, N); gl.bindVertexArray(null);
+    requestAnimationFrame(frame);
+  }
+  window.__d = { get s() { return { scene, K: +K.toFixed(2), hold: +hold.toFixed(1), auto }; }, go: i => go(i), finish: () => { K = .999; } };
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

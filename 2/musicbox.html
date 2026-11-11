@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Музыкальная шкатулка · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--acc:#ffd84d;--line:rgba(242,238,227,.3)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+#c{touch-action:none;position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.55)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;max-width:66ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(12,12,11,.5);color:var(--ink);padding:9px 14px;border-radius:999px;text-shadow:none;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.7)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.stat{font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px;text-shadow:0 1px 10px rgba(0,0,0,.8)}
+.roll{position:fixed;z-index:5;right:28px;bottom:70px;padding:12px 14px 14px;border:1px solid var(--line);border-radius:14px;background:rgba(12,12,11,.72);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.roll[hidden]{display:none}
+.roll .top{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:10px;font-size:13px}
+.roll canvas{display:block;cursor:pointer;border-radius:6px}
+.roll .pill{padding:6px 10px;font-size:12px}
+.lab{position:fixed;z-index:4;left:0;top:0;pointer-events:none;font:500 13px/1 -apple-system,"Helvetica Neue",Arial,sans-serif;padding:6px 10px;border-radius:999px;background:rgba(12,12,11,.7);border:1px solid var(--line);white-space:nowrap;transform:translate(-50%,-50%)}
+.err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:40px;text-align:center}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Музыкальная шкатулка</h1>
+    <p>Валик со штырьками, стальная гребёнка и пружина. Заведите ключом – штырьки начнут цеплять зубцы. Разберите на детали, чтобы увидеть, что за что держится. Или расставьте штырьки сами: шкатулка сыграет вашу мелодию.</p>
+  </div>
+  <nav class="nav"><a href="bell.html">← Назад</a><a href="index.html">Все демо</a><a href="snowglobe.html">Дальше →</a></nav>
+</div>
+<div class="roll" id="roll" hidden>
+  <div class="top"><span>Развёртка валика: клик ставит или убирает штырёк</span><span><button class="pill" id="clr">Очистить</button> <button class="pill" id="mel">Мелодия</button></span></div>
+  <canvas id="rc" width="512" height="210"></canvas>
+</div>
+<div class="bar">
+  <button class="pill on" id="wind">Завести</button><button class="pill" id="ex">Разобрать</button><button class="pill" id="ed">Развёртка валика</button>
+  <span class="stat" id="stat"></span>
+</div>
+<div class="err" id="err">Этому демо нужен WebGL 2. Откройте его в свежем Chrome или Safari.</div>
+<script>
+'use strict';
+const FS = `#version 300 es
+precision highp float;
+uniform vec2 uRes; uniform float uT;
+uniform vec3 uRo, uRi, uUp, uFw;
+uniform vec4 uM;            // поворот валика, разборка, вертушка, ключ
+uniform float uTooth[15];   // прогиб каждого зубца
+uniform sampler2D uPins;    // где на валике стоят штырьки
+out vec4 O;
+const vec3 L1 = vec3(-.5735, .6257, .5290), L2 = vec3(.8, .32, .35);
+const float R = .2, PITCH = .09, X0 = -.675;
+float h21(vec2 p){ vec3 q = fract(vec3(p.xyx) * .1031); q += dot(q, q.yzx + 33.33); return fract((q.x + q.y) * q.z); }
+float vn(vec2 x){ vec2 p = floor(x), f = fract(x); f = f * f * (3. - 2. * f); return mix(mix(h21(p), h21(p + vec2(1, 0)), f.x), mix(h21(p + vec2(0, 1)), h21(p + vec2(1, 1)), f.x), f.y); }
+mat2 rot(float a){ float c = cos(a), s = sin(a); return mat2(c, s, -s, c); }
+float sdBox(vec3 p, vec3 b){ vec3 q = abs(p) - b; return length(max(q, 0.)) + min(max(q.x, max(q.y, q.z)), 0.); }
+float sdCap(vec3 p, vec3 a, vec3 b, float r){ vec3 pa = p - a, ba = b - a; return length(pa - ba * clamp(dot(pa, ba) / dot(ba, ba), 0., 1.)) - r; }
+vec2 U(vec2 a, vec2 b){ return a.x < b.x ? a : b; }
+float gear(vec3 q, float r, float n, float ang){ float rr = length(q.yz), d = max(rr - r - .014, abs(q.x) - .014); if (d > .04) return d; // зубья считаем только вблизи
+  return max(rr - r - .014 * smoothstep(-.4, .4, sin((atan(q.y, q.z) + ang) * n)), abs(q.x) - .014) * .7; }
+// Штырьки: валик поделён на клетки, в каждой либо есть штырёк, либо нет
+float pins(vec3 q){
+  float r = length(q.yz); if (r > R + .034 || abs(q.x) > .69) return max(r - R - .03, abs(q.x) - .68) + .01;
+  float a = atan(q.y, q.z) - uM.x, si = floor(mod(-a / 6.2831853 * 32., 32.)), ti = floor((q.x - X0) / PITCH);
+  if (ti < 0. || ti > 14. || texelFetch(uPins, ivec2(int(ti), int(si)), 0).r < .5) return .012;
+  float ac = -(si + .5) / 32. * 6.2831853 + uM.x; vec3 dir = vec3(0., sin(ac), cos(ac)), d = q - vec3(X0 + (ti + .5) * PITCH, 0., 0.);
+  return min(length(d - dir * clamp(dot(d, dir), R - .005, R + .024)) - .0085, .012);
+}
+float comb(vec3 p){
+  float ti = clamp(floor((p.x - X0) / PITCH), 0., 14.), zr = .56 - .26 * ti / 14., zt = .137, k = clamp((zr - p.z) / (zr - zt), 0., 1.);
+  float d = sdBox(vec3(p.x - X0 - (ti + .5) * PITCH, p.y - .36 - uTooth[int(ti)] * k * k, p.z - (zr + zt) * .5), vec3(.034, .011 * (1.4 - .6 * k), (zr - zt) * .5));
+  float zx = .56 - .26 * clamp((p.x + .63) / 1.26, 0., 1.);
+  d = min(d, sdBox(vec3(p.x, p.y - .36, p.z - (zx + .74) * .5), vec3(.7, .016, (.74 - zx) * .5)) * .8);
+  return abs(p.x) < .74 ? min(d, length(vec3(mod(p.x + .75, .5) - .25, (p.y - .378) * 2., p.z - .69)) - .024) : d; // винты
+}
+vec2 map(vec3 p){
+  float ex = uM.y; vec3 bb = abs(p - vec3(-.25, .25 + .2 * ex, .1 * ex)) - vec3(1.75 + .45 * ex, .75 + .55 * ex, 1.1 + .4 * ex);
+  float bd = length(max(bb, 0.)); if (bd > .25) return vec2(bd, 3.);
+  vec2 r = vec2(sdBox(p - vec3(-.22, -.13 - .25 * ex, 0.), vec3(1.5, .1, .88)) - .03, 2.);            // деревянное основание
+  float br = sdBox(p - vec3(-.22, .02, 0.), vec3(1.32, .022, .78));                                    // латунная плита
+  br = min(br, sdBox(vec3(p.x + .05, p.y - .2, p.z + .08) - vec3(sign(p.x + .05) * .81, 0., 0.), vec3(.022, .2, .075))); // стойки
+  vec3 c = p - vec3(0., .36 + .55 * ex, -.08);                                                         // валик с шестернями
+  float cy = max(length(c.yz) - R, abs(c.x + .02) - .7);
+  cy = min(cy, gear(c - vec3(-.77, 0., 0.), .25, 50., -uM.x)); cy = min(cy, gear(c - vec3(.73, 0., 0.), .12, 24., -uM.x));
+  br = min(br, cy); r = U(r, vec2(pins(c + vec3(.02, 0., 0.) - vec3(.02, 0., 0.)), 4.));
+  r = U(r, vec2(sdCap(c, vec3(-.9, 0., 0.), vec3(.86, 0., 0.), .028), 4.));
+  vec3 b = p - vec3(-1.02 - .4 * ex, .30 + .3 * ex, -.52);                                             // барабан с пружиной и ключ
+  br = min(br, max(length(b.yz) - .19, abs(b.x) - .22)); br = min(br, gear(b - vec3(.25, 0., 0.), .2, 40., uM.x * 1.25 + .08));
+  br = min(br, sdCap(b, vec3(-.22, 0., 0.), vec3(-.4, 0., 0.), .022));
+  vec3 kq = b - vec3(-.44, 0., 0.); kq.yz = rot(uM.w) * kq.yz; br = min(br, (length(kq / vec3(.02, .1, .055)) - 1.) * .02);
+  vec3 g = p - vec3(.93 + .35 * ex, .35 * ex, -.3);                                                    // регулятор с вертушкой
+  float gv = sdCap(g, vec3(0., .04, 0.), vec3(0., .5, 0.), .013); vec3 f = g - vec3(0., .46, 0.); f.xz = rot(uM.z) * f.xz;
+  gv = min(gv, sdBox(vec3(abs(f.x) - .075, f.y, f.z), vec3(.055, .04, .004))); gv = min(gv, max(length(g.xz) - .06, abs(g.y - .3) - .012));
+  r = U(r, vec2(gv, 4.));
+  vec3 q = p - vec3(0., .15 * ex, .5 * ex);                                                            // гребёнка на подставке
+  r = U(r, vec2(comb(q), 4.)); br = min(br, sdBox(q - vec3(0., .19, .66), vec3(.72, .15, .07)));
+  return U(r, vec2(br, 3.));
+}
+vec3 nrm(vec3 p){ vec2 e = vec2(.0015, -.0015); return normalize(e.xyy * map(p + e.xyy).x + e.yyx * map(p + e.yyx).x + e.yxy * map(p + e.yxy).x + e.xxx * map(p + e.xxx).x); }
+float shadow(vec3 p){ float r = 1., t = .02; for (int i = 0; i < 12; i++) { float d = map(p + L1 * t).x; r = min(r, 9. * d / t); t += clamp(d, .03, .3); if (r < .02 || t > 3.) break; } return clamp(r, 0., 1.); }
+vec3 env(vec3 d){
+  vec3 c = mix(vec3(.02, .018, .02), vec3(.07, .055, .045), smoothstep(-.3, .7, d.y));
+  if (d.y < 0.) c = mix(c, vec3(.03, .05, .04), smoothstep(0., -.25, d.y));
+  vec3 wr = normalize(cross(vec3(0, 1, 0), L1)), wu = cross(L1, wr); float k = dot(d, L1);
+  if (k > 0.) { vec2 w = vec2(dot(d, wr), dot(d, wu)) / k, q = abs(w) - vec2(.3, .42);
+    c += vec3(.82, .92, 1.) * 6.5 * smoothstep(.02, -.02, max(q.x, q.y)) * smoothstep(.014, .028, abs(w.x)) * smoothstep(.014, .028, abs(w.y + .07)); }
+  return c + vec3(1., .58, .22) * (3. * pow(max(dot(d, L2), 0.), 60.) + .25 * pow(max(dot(d, L2), 0.), 4.));
+}
+vec3 matte(vec3 p, vec3 n, float m, float sh){ // простая заливка: дерево, сукно и то, что видно в отражениях
+  vec3 lit = vec3(.8, .88, 1.) * 1.1 * max(dot(n, L1), 0.) * sh + vec3(1., .6, .25) * .35 * max(dot(n, L2), 0.) + vec3(.09, .09, .1) * (.6 + .4 * n.y);
+  if (m < 1.5) return vec3(.045, .09, .065) * (.8 + .4 * vn(p.xz * 70.)) * lit;
+  if (m < 2.5) { float g = vn(vec2(p.x * 1.2, p.z * 9. + p.y * 14.)); return mix(vec3(.26, .12, .055), vec3(.36, .18, .085), .5 + .5 * sin(p.z * 26. + p.y * 20. + g * 9.)) * (.75 + .25 * g) * lit + vec3(.8, .9, 1.) * .08 * pow(max(dot(reflect(-L1, n), normalize(uRo - p)), 0.), 20.) * sh; }
+  if (m < 3.5) return vec3(.8, .58, .24) * (lit * .5 + env(n) * .5);
+  return vec3(.62, .66, .7) * (lit * .45 + env(n) * .5);
+}
+void main(){
+  vec2 uv = (gl_FragCoord.xy * 2. - uRes) / uRes.y;
+  vec3 ro = uRo, rd = normalize(uFw * 2.6 + uRi * uv.x + uUp * uv.y), col = mix(vec3(.03, .026, .024), vec3(.012, .011, .013), smoothstep(-.1, .6, rd.y));
+  float tF = rd.y < 0. ? (-.24 - .25 * uM.y - ro.y) / rd.y : 1e9, tMax = min(tF, 30.), t = .1, m = 0.; bool hit = false;
+  for (int i = 0; i < 80; i++) { vec2 h = map(ro + rd * t); if (h.x < .001 * (1. + t * .3)) { hit = true; m = h.y; break; } t += h.x * .9; if (t > tMax) break; }
+  if (!hit && tMax < 30.) { hit = true; t = tMax; m = 1.; }
+  if (hit) {
+    vec3 p = ro + rd * t, n = m < 1.5 ? vec3(0, 1, 0) : nrm(p); float sh = shadow(p + n * .006);
+    if (m < 2.5) { col = matte(p, n, m, sh); if (m < 1.5) col *= .45 + .55 * smoothstep(.9, 2.6, length((p.xz - vec2(-.2, 0.)) * vec2(.8, 1.3))); }
+    else { // металл: в нём отражаются комната и соседние детали
+      vec3 rf = reflect(rd, n), rc = env(rf); float tr = .02;
+      for (int i = 0; i < 14; i++) { vec2 h = map(p + n * .004 + rf * tr); if (h.x < .004) { vec3 p2 = p + rf * tr; rc = matte(p2, nrm(p2), h.y, 1.); break; } tr += h.x; if (tr > 1.) break; }
+      vec3 tint = m < 3.5 ? vec3(1., .76, .36) : vec3(.84, .88, .93); float fr = pow(1. - max(dot(-rd, n), 0.), 5.);
+      float br = .9 + .1 * vn(vec2(p.x * 300., p.z * 6.)); // шлифовка
+      col = rc * mix(tint, vec3(1.), fr) * br * (.4 + .6 * sh) + tint * .05 * max(dot(n, L1), 0.) * sh;
+    }
+    col = mix(col, vec3(.02, .018, .018), 1. - exp(-t * .03));
+  }
+  col *= 1. - .3 * dot(uv * vec2(.5, .62), uv * vec2(.5, .62));
+  col = col * (2.51 * col + .03) / (col * (2.43 * col + .59) + .14);
+  O = vec4(pow(clamp(col, 0., 1.), vec3(.4545)) + (h21(gl_FragCoord.xy + fract(uT) * 91.) - .5) / 255., 1.);
+}`;
+
+const cv = document.getElementById('c'), gl = cv.getContext('webgl2', { antialias: false, alpha: false }), $ = id => document.getElementById(id);
+if (!gl) $('err').style.display = 'flex';
+else (function () {
+  const sh = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  const pr = gl.createProgram();
+  gl.attachShader(pr, sh(gl.VERTEX_SHADER, '#version 300 es\nvoid main(){gl_Position=vec4(vec2(gl_VertexID&1,gl_VertexID>>1)*4.-1.,0,1);}'));
+  gl.attachShader(pr, sh(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr);
+  if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+  gl.useProgram(pr); const U = {}; ['uRes', 'uT', 'uRo', 'uRi', 'uUp', 'uFw', 'uM', 'uTooth', 'uPins'].forEach(n => U[n] = gl.getUniformLocation(pr, n));
+
+  // штырьки: 15 зубцов × 32 шага
+  const NT = 15, NS = 32, pinsA = new Uint8Array(NT * NS), tex = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, tex); gl.pixelStorei(gl.UNPACK_ALIGNMENT, 1);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST); gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+  const upPins = () => gl.texImage2D(gl.TEXTURE_2D, 0, gl.R8, NT, NS, 0, gl.RED, gl.UNSIGNED_BYTE, pinsA);
+  const setPin = (t, s, v) => { pinsA[s * NT + t] = v ? 255 : 0; };
+  function melody() { pinsA.fill(0); // своя простая колыбельная в до мажоре
+    const M = { 0: [2, 0], 2: [4], 4: [7], 6: [4], 8: [5, 3], 10: [7], 12: [9], 14: [7], 16: [8, 4], 18: [6], 20: [4], 22: [6], 24: [7, 0], 28: [4], 29: [2], 30: [0] };
+    for (const s in M) M[s].forEach(t => setPin(t, +s, 1)); upPins(); drawRoll(); }
+
+  // звук: зубец – это синус с коротким звонким призвуком
+  let AC = null, out;
+  const MIDI = [0, 2, 4, 5, 7, 9, 11, 12, 14, 16, 17, 19, 21, 23, 24].map(d => 440 * Math.pow(2, (72 + d - 69) / 12));
+  function audio() {
+    if (AC) return; AC = new (window.AudioContext || window.webkitAudioContext)(); out = AC.createGain(); out.gain.value = .8; out.connect(AC.destination);
+    const ir = AC.createBuffer(2, AC.sampleRate * 1.3, AC.sampleRate); for (let c = 0; c < 2; c++) { const d = ir.getChannelData(c); for (let i = 0; i < d.length; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / d.length, 3); }
+    const cvr = AC.createConvolver(), wet = AC.createGain(); cvr.buffer = ir; wet.gain.value = .16; out.connect(cvr); cvr.connect(wet); wet.connect(AC.destination);
+  }
+  function tone(f, v, dur) { const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = f; o.connect(g); g.connect(out); g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + .003); g.gain.exponentialRampToValueAtTime(v * .001, t + dur); o.start(t); o.stop(t + dur + .05); }
+  const pluckT = new Float64Array(NT).fill(-9);
+  function pluck(i) { pluckT[i] = T; if (!AC) return; const f = MIDI[i]; tone(f, .2, 1.9); tone(f * 2.003, .035, .9); tone(f * 6.27, .03, .12); }
+  function click(v) { if (!AC) return; const t = AC.currentTime, o = AC.createOscillator(), g = AC.createGain(); o.type = 'square'; o.frequency.value = 1900; o.connect(g); g.connect(out); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(.0005, t + .03); o.start(t); o.stop(t + .04); }
+
+  // развёртка валика
+  const rc = $('rc'), rg = rc.getContext('2d'), CW = 15, CH = 12, OX = 22, OY = 8;
+  function drawRoll() {
+    rg.clearRect(0, 0, 512, 210);
+    for (let s = 0; s < NS; s++) for (let t = 0; t < NT; t++) { const x = OX + s * CW, y = OY + (NT - 1 - t) * CH, on = pinsA[s * NT + t];
+      rg.fillStyle = on ? '#ffd84d' : s % 8 === 0 ? 'rgba(242,238,227,.16)' : t % 7 === 0 ? 'rgba(242,238,227,.11)' : 'rgba(242,238,227,.06)'; rg.fillRect(x + 1, y + 1, CW - 2, CH - 2); }
+    rg.fillStyle = 'rgba(242,238,227,.55)'; rg.font = '10px ui-monospace,Menlo,monospace'; rg.textBaseline = 'middle';
+    ['до', '', '', '', '', '', '', 'до', '', '', '', '', '', '', 'до'].forEach((n, t) => n && rg.fillText(n, 3, OY + (NT - 1 - t) * CH + CH / 2));
+    const h = ((rotA / 6.2831853 * NS) % NS + NS) % NS; rg.fillStyle = '#ff5a3c'; rg.fillRect(OX + h * CW - 1, OY - 3, 2, NT * CH + 6);
+  }
+  rc.addEventListener('pointerdown', e => { audio(); const b = rc.getBoundingClientRect(), s = Math.floor(((e.clientX - b.left) * 512 / b.width - OX) / CW), t = NT - 1 - Math.floor(((e.clientY - b.top) * 210 / b.height - OY) / CH);
+    if (s < 0 || s >= NS || t < 0 || t >= NT) return; const v = !pinsA[s * NT + t]; setPin(t, s, v); upPins(); if (v) pluck(t); drawRoll(); });
+  $('clr').onclick = () => { pinsA.fill(0); upPins(); drawRoll(); }; $('mel').onclick = melody;
+
+  // механизм
+  let rotA = 0, spring = 0, winding = 0, keyA = 0, fan = 0, exT = 0, ex = 0, T = 0, lastStep = -1;
+  const REV = 6.4, tooth = new Float32Array(NT), stat = $('stat');
+  $('wind').onclick = () => { audio(); if (winding <= 0) winding = 1.2; };
+  $('ex').onclick = e => { exT = exT ? 0 : 1; e.target.classList.toggle('on', !!exT); e.target.textContent = exT ? 'Собрать' : 'Разобрать'; };
+  $('ed').onclick = e => { const r = $('roll'); r.hidden = !r.hidden; e.target.classList.toggle('on', !r.hidden); drawRoll(); };
+  addEventListener('keydown', e => { if (e.code === 'Space') { e.preventDefault(); $('wind').click(); } });
+  function step(dt) {
+    if (winding > 0) { const k0 = Math.floor(keyA / 1.0472); winding -= dt; keyA += dt * 10.5; spring = Math.min(1, spring + dt * .42); if (Math.floor(keyA / 1.0472) !== k0) click(.12); }
+    const run = spring > 0 && ex < .05 ? .6 + .4 * Math.min(1, spring / .2) : 0; // на исходе завода мелодия замедляется
+    if (run) { rotA += dt * 6.2831853 / REV * run; spring = Math.max(0, spring - dt / 20); fan += dt * 46 * run; if (winding <= 0) keyA -= dt * .35 * run;
+      const st = Math.floor(rotA / 6.2831853 * NS - .5); if (st !== lastStep) { lastStep = st; const s = ((st % NS) + NS) % NS; for (let t = 0; t < NT; t++) if (pinsA[s * NT + t]) pluck(t); } }
+    ex += (exT - ex) * Math.min(1, dt * 4);
+    for (let i = 0; i < NT; i++) { const a = T - pluckT[i]; tooth[i] = a < 2 ? .013 * Math.exp(-a * 5) * Math.cos(a * (38 + i * 5)) : 0; }
+    const n = Math.ceil(spring * 5); stat.textContent = `завод ${'▮'.repeat(n)}${'▯'.repeat(5 - n)} · ` + (ex > .5 ? 'механизм разобран' : spring > 0 ? 'играет' : 'нажмите «Завести» или пробел');
+  }
+
+  // подписи деталей в разобранном виде
+  const LAB = [['Валик со штырьками', [0, .62 + .55, -.08]], ['Гребёнка', [0, .36 + .15 + .12, .5 + .5]], ['Пружина и ключ', [-1.02 - .4, .30 + .3 + .28, -.52]], ['Регулятор', [.93 + .35, .35 + .62, -.3]], ['Плита', [.75, .12, .62]]]
+    .map(([t, p]) => { const d = document.createElement('div'); d.className = 'lab'; d.textContent = t; document.body.appendChild(d); return { d, p }; });
+
+  let yaw = .5, pitch = .42, dist = 5.6, drag = null; const F = 2.6, TG = [-.15, .28, 0]; let ro, fw, ri, up;
+  const nrm = v => { const l = Math.hypot(...v); return v.map(x => x / l); }, crs = (a, b) => [a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]], dot = (a, b) => a[0] * b[0] + a[1] * b[1] + a[2] * b[2];
+  function cam() { const tg = [TG[0], TG[1] + .25 * ex, TG[2]], d = dist * (1 + .28 * ex), cp = Math.cos(pitch); ro = [tg[0] + d * Math.sin(yaw) * cp, tg[1] + d * Math.sin(pitch), tg[2] + d * Math.cos(yaw) * cp]; fw = nrm(tg.map((v, i) => v - ro[i])); ri = nrm(crs(fw, [0, 1, 0])); up = crs(ri, fw); }
+  cv.addEventListener('pointerdown', e => { audio(); drag = { x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; });
+  cv.addEventListener('pointermove', e => { if (!drag) return; yaw -= (e.clientX - drag.x) * .006; pitch = Math.max(.08, Math.min(1.2, pitch + (e.clientY - drag.y) * .004)); drag = { x: e.clientX, y: e.clientY }; });
+  addEventListener('pointerup', () => { drag = null; cv.style.cursor = 'grab'; });
+  cv.addEventListener('wheel', e => { e.preventDefault(); dist = Math.max(2.6, Math.min(10, dist * Math.exp(e.deltaY * .001))); }, { passive: false });
+
+  let scale = .8, ema = 16, lastChange = 0, last = 0;
+  function resize() { const d = Math.min(1.5, devicePixelRatio || 1) * scale; cv.width = Math.max(2, Math.round(innerWidth * d)); cv.height = Math.max(2, Math.round(innerHeight * d)); gl.viewport(0, 0, cv.width, cv.height); }
+  addEventListener('resize', resize); resize(); melody();
+  function frame(now) {
+    const dt = Math.min(.05, (now - last) / 1000 || .016); if (last && now - last < 100) ema += ((now - last) - ema) * .08; // долгие кадры – это фоновая вкладка, а не медленная видеокарта last = now; T += dt;
+    if (now - lastChange > 1200 && document.visibilityState === 'visible') {
+      if (ema > 24 && scale > .3) { scale = Math.max(.3, scale * (ema > 40 ? .7 : .87)); lastChange = now; ema = 17; resize(); }
+      else if (ema < 15 && scale < 1 && now - lastChange > 5000) { scale = Math.min(1, scale + .1); lastChange = now; ema = 17; resize(); }
+    }
+    step(dt); cam(); if (!$('roll').hidden) drawRoll();
+    LAB.forEach(l => { const q = l.p.map((v, i) => v - ro[i]), z = dot(q, fw), k = F / z * innerHeight / 2; l.d.style.opacity = Math.max(0, ex * 2 - 1); l.d.style.transform = `translate(${innerWidth / 2 + dot(q, ri) * k}px,${innerHeight / 2 - dot(q, up) * k}px) translate(-50%,-50%)`; });
+    gl.uniform2f(U.uRes, cv.width, cv.height); gl.uniform1f(U.uT, T); gl.uniform3fv(U.uRo, ro); gl.uniform3fv(U.uRi, ri); gl.uniform3fv(U.uUp, up); gl.uniform3fv(U.uFw, fw);
+    gl.uniform4f(U.uM, rotA, ex, fan, keyA); gl.uniform1fv(U.uTooth, tooth); gl.uniform1i(U.uPins, 0);
+    gl.drawArrays(gl.TRIANGLES, 0, 3); requestAnimationFrame(frame);
+  }
+  window.__m = { get s() { return { scale, ema: Math.round(ema), spring: +spring.toFixed(2), rot: +rotA.toFixed(2), ex: +ex.toFixed(2), step: lastStep, pins: pinsA.reduce((a, b) => a + (b ? 1 : 0), 0) }; }, set(o) { if (o.yaw != null) yaw = o.yaw; if (o.pitch != null) pitch = o.pitch; if (o.dist != null) dist = o.dist; } };
+  requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>

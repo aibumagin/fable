@@ -1,0 +1,278 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Пинбол «Звездочёт» · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--acc:#ffd84d;--line:rgba(242,238,227,.3)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:radial-gradient(ellipse at 50% 38%,#33261a 0%,#17120d 45%,#0c0c0b 80%);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
+.stage{position:fixed;inset:0;display:flex;align-items:center;justify-content:center;perspective:1700px;perspective-origin:50% 35%;touch-action:none}
+canvas{display:block;border-radius:20px;transform:translateY(-3%) rotateX(22deg);box-shadow:0 70px 90px rgba(0,0,0,.75),0 0 0 1px rgba(0,0,0,.6)}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.7)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;max-width:31ch;font-size:14.5px}
+.hud kbd{font:12px ui-monospace,"SF Mono",Menlo,monospace;border:1px solid var(--line);border-radius:5px;padding:1px 5px;background:rgba(12,12,11,.5)}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(12,12,11,.6);color:var(--ink);padding:9px 14px;border-radius:999px;text-shadow:none;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.7)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;pointer-events:none}
+.bar>*{pointer-events:auto}
+.bar label{display:flex;align-items:center;gap:8px;font-size:13.5px;margin-left:6px;text-shadow:0 1px 10px rgba(0,0,0,.9)}
+.bar input[type=range]{width:110px;accent-color:var(--acc)}
+.stat{font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px;text-shadow:0 1px 10px rgba(0,0,0,.9)}
+.cap{position:fixed;z-index:4;left:50%;bottom:86px;transform:translateX(-50%);pointer-events:none;font:500 24px/1.2 Charter,"Iowan Old Style","PT Serif",Georgia,serif;color:#fff3d2;
+  text-shadow:0 2px 14px rgba(0,0,0,.95),0 0 30px rgba(0,0,0,.8);white-space:nowrap;transition:opacity .35s;opacity:0}
+@media (max-width:1000px){.hud p{display:none}}
+</style>
+</head>
+<body>
+<div class="stage" id="stage"><canvas id="c"></canvas></div>
+<div class="hud">
+  <div>
+    <h1>Пинбол «Звездочёт»</h1>
+    <p>Настольный автомат из клёна и латуни. Шарик считает физика: наклон, удары, пружина. Звук тоже считается на лету.<br><br>
+    <kbd>←</kbd> <kbd>→</kbd> флипперы · <kbd>пробел</kbd> пружина: держи и отпусти · <kbd>↑</kbd> толкнуть стол. Зажги все семь звёзд.</p>
+  </div>
+  <nav class="nav"><a href="sand.html">← Назад</a><a href="index.html">Все демо</a><a href="lamplighter.html">Дальше →</a></nav>
+</div>
+<div class="cap" id="cap"></div>
+<div class="bar">
+  <button class="pill" id="new">Новая игра</button><button class="pill" id="auto">Автопилот</button><button class="pill on" id="snd">Звук</button>
+  <label>Наклон <input type="range" id="slope" min="4" max="9" step=".5" value="6.5"><span id="slopev">6,5°</span></label>
+  <span class="stat" id="stat"></span>
+</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id), cv = $('c'), g = cv.getContext('2d'), st = document.createElement('canvas');
+const TW = 540, TH = 920, BR = 11, RF = 8, L = 26, R = 474, RO = 514, CX = 250, PI = Math.PI;
+let S = 1;
+
+// ---------- Стол: стенки, колокольчики, звёзды ----------
+const segs = [], seg = (x1, y1, x2, y2, e = .42, kind = 'rail') => { const s = { x1, y1, x2, y2, e, kind, t: 0 }; segs.push(s); return s; };
+for (let i = 0; i < 30; i++) { const a0 = PI + i * PI / 30, a1 = PI + (i + 1) * PI / 30; seg(270 + 244 * Math.cos(a0), 270 + 244 * Math.sin(a0), 270 + 244 * Math.cos(a1), 270 + 244 * Math.sin(a1)); }
+seg(L, 270, L, 690); seg(RO, 270, RO, TH); seg(R, 250, R, TH);
+seg(L, 690, 150, 790); seg(R, 690, 350, 790);
+seg(R, 138, R, 250, .3, 'gate');
+const plSeg = seg(R, 871, RO, 871, .12, 'plunger');
+const slings = [0, 1].map(m => { const X = x => m ? 2 * CX - x : x;
+  seg(X(84), 580, X(84), 676, .4, 'post'); seg(X(84), 676, X(142), 716, .4, 'post');
+  return { s: seg(X(84), 580, X(142), 716, .5, 'sling'), pts: [[X(84), 580], [X(84), 676], [X(142), 716]] }; });
+const bells = [[170, 300], [330, 300], [250, 385]].map(([x, y], i) => ({ x, y, r: 26, i, t: -9 }));
+const pegs = [[120, 352], [380, 352], [250, 482]].map(([x, y]) => ({ x, y, r: 6 }));
+const stars = [[250, 190], [404, 236], [118, 442], [382, 442], [200, 536], [300, 536], [250, 642]].map(([x, y]) => ({ x, y, on: false, t: -9 }));
+const hole = { x: 100, y: 210, cool: 0 };
+const flips = [{ px: 156, py: 796, len: 74, rest: .48, act: -.52, a: .48, w: 0, on: false }, { px: 344, py: 796, len: 74, rest: PI - .48, act: PI + .52, a: PI - .48, w: 0, on: false }];
+
+// ---------- Состояние игры ----------
+let G = 8800 * Math.sin(6.5 * PI / 180);
+let best = 0; try { best = +localStorage.getItem('fable-pinball-best') || 0; } catch (e) {}
+const s = { score: 0, disp: 0, ball: 1, mult: 1, mode: 'play', tm: 0, tilt: 0, tilted: false, charge: 0, charging: false, still: 0, flash: -9, auto: false, autoT: 0, af: [0, 0], shake: 0 };
+const b = { x: 494, y: 860, vx: 0, vy: 0 };
+const inLane = () => b.x > R && b.y > 800;
+function newBall() { b.x = 494; b.y = 860; b.vx = b.vy = 0; s.mode = 'play'; s.tilt = 0; s.tilted = false; s.still = 0; }
+function newGame() { s.score = s.disp = 0; s.ball = 1; s.mult = 1; stars.forEach(o => o.on = false); newBall(); }
+function add(n) { s.score += n * s.mult; if (s.score > best) { best = s.score; try { localStorage.setItem('fable-pinball-best', best); } catch (e) {} } }
+
+// ---------- Звук: всё синтезируется ----------
+let ac, out, rollG, nbuf, sndOn = true, lastTock = 0;
+function audio() { if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)(); out = ac.createGain(); out.gain.value = sndOn ? .8 : 0;
+  const cmp = ac.createDynamicsCompressor(); out.connect(cmp); cmp.connect(ac.destination);
+  nbuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate); const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const src = ac.createBufferSource(); src.buffer = nbuf; src.loop = true; const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.value = 300; bp.Q.value = .6;
+  rollG = ac.createGain(); rollG.gain.value = 0; src.connect(bp); bp.connect(rollG); rollG.connect(out); src.start(); }
+function hit(freq, q, dur, vol, type = 'bandpass') { if (!ac) return; const t = ac.currentTime, src = ac.createBufferSource(), f = ac.createBiquadFilter(), gn = ac.createGain();
+  src.buffer = nbuf; f.type = type; f.frequency.value = freq; f.Q.value = q; gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(.0008, t + dur);
+  src.connect(f); f.connect(gn); gn.connect(out); src.start(t, Math.random() * .8, dur + .02); }
+function tone(f1, dur, vol, type = 'sine', f2, delay = 0) { if (!ac) return; const t = ac.currentTime + delay, o = ac.createOscillator(), gn = ac.createGain();
+  o.type = type; o.frequency.setValueAtTime(f1, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  gn.gain.setValueAtTime(.0001, t); gn.gain.exponentialRampToValueAtTime(vol, t + .004); gn.gain.exponentialRampToValueAtTime(.0006, t + dur);
+  o.connect(gn); gn.connect(out); o.start(t); o.stop(t + dur + .03); }
+const snd = {
+  tock(v) { if (!ac || v < 70 || ac.currentTime - lastTock < .035) return; lastTock = ac.currentTime; const k = Math.min(1, v / 900); hit(700 + Math.random() * 500, 1.4, .05, k * .55); tone(150, .07, k * .5, 'sine', 70); },
+  bell(i) { const f = [784, 988, 1175][i]; [[1, 1], [2.41, .5], [3.9, .28], [5.85, .14]].forEach(([p, a], k) => tone(f * p, 1.5 / (1 + k * .7), .15 * a)); hit(2400, 2, .03, .3); },
+  clack() { hit(1700, .8, .035, .3); tone(100, .07, .45, 'sine', 55); },
+  twang() { tone(430, .13, .28, 'triangle', 140); hit(900, 2, .04, .2); },
+  spring(c) { tone(80, .32, .35, 'triangle', 220 + 160 * c); hit(500, 1, .14, .25 + .2 * c); },
+  chime(n) { tone(1319 * Math.pow(2, n / 12), .6, .16); tone(2638 * Math.pow(2, n / 12), .3, .05); },
+  all() { [0, 4, 7, 12, 16, 19, 24].forEach((n, i) => { tone(659 * Math.pow(2, n / 12), .7, .14, 'sine', 0, i * .09); }); },
+  buzz() { tone(82, .8, .22, 'sawtooth'); tone(87, .8, .18, 'sawtooth'); },
+  drain() { tone(330, .6, .22, 'sine', 98); },
+  hole() { hit(400, 1, .08, .4); tone(220, .12, .3, 'sine', 110); }
+};
+
+// ---------- Физика ----------
+function bounce(nx, ny, e) { const vn = b.vx * nx + b.vy * ny; if (vn < 0) { b.vx -= (1 + e) * vn * nx; b.vy -= (1 + e) * vn * ny; } return -vn; }
+function step(dt, now) {
+  for (const f of flips) { const on = f.on && !s.tilted && s.mode !== 'over', tgt = on ? f.act : f.rest, sp = on ? 30 : 16, da = tgt - f.a, d = Math.sign(da) * Math.min(Math.abs(da), sp * dt); f.w = d / dt; f.a += d; }
+  if (s.mode !== 'play') return;
+  b.vy += G * dt; b.vx *= 1 - .07 * dt; b.vy *= 1 - .07 * dt;
+  const v = Math.hypot(b.vx, b.vy); if (v > 1900) { b.vx *= 1900 / v; b.vy *= 1900 / v; }
+  b.x += b.vx * dt; b.y += b.vy * dt;
+  for (const w of segs) {
+    const dx = w.x2 - w.x1, dy = w.y2 - w.y1; let t = ((b.x - w.x1) * dx + (b.y - w.y1) * dy) / (dx * dx + dy * dy); t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const qx = w.x1 + dx * t, qy = w.y1 + dy * t; let nx = b.x - qx, ny = b.y - qy; const d = Math.hypot(nx, ny);
+    if (d >= BR || d === 0) continue;
+    if (w.kind === 'gate' && !(b.vx > 0 && b.x < w.x1)) continue;
+    nx /= d; ny /= d; b.x = qx + nx * BR; b.y = qy + ny * BR;
+    const imp = bounce(nx, ny, w.e);
+    if (w.kind === 'sling' && imp > 90 && t > .08 && t < .92) { b.vx += nx * 430; b.vy += ny * 430; w.t = now; add(10); snd.twang(); } else snd.tock(imp);
+  }
+  for (const c of bells) { let nx = b.x - c.x, ny = b.y - c.y; const d = Math.hypot(nx, ny); if (d >= BR + c.r) continue; nx /= d; ny /= d; b.x = c.x + nx * (BR + c.r); b.y = c.y + ny * (BR + c.r);
+    if (bounce(nx, ny, .5) > 40) { b.vx += nx * 420; b.vy += ny * 420; c.t = now; add(100); snd.bell(c.i); } }
+  for (const c of pegs) { let nx = b.x - c.x, ny = b.y - c.y; const d = Math.hypot(nx, ny); if (d >= BR + c.r) continue; nx /= d; ny /= d; b.x = c.x + nx * (BR + c.r); b.y = c.y + ny * (BR + c.r); snd.tock(bounce(nx, ny, .62) * 1.3); }
+  for (const f of flips) { const dx = Math.cos(f.a) * f.len, dy = Math.sin(f.a) * f.len; let t = ((b.x - f.px) * dx + (b.y - f.py) * dy) / (f.len * f.len); t = t < 0 ? 0 : t > 1 ? 1 : t;
+    const rx = dx * t, ry = dy * t; let nx = b.x - f.px - rx, ny = b.y - f.py - ry; const d = Math.hypot(nx, ny); if (d >= BR + RF || d === 0) continue;
+    nx /= d; ny /= d; b.x = f.px + rx + nx * (BR + RF); b.y = f.py + ry + ny * (BR + RF);
+    const sx = -f.w * ry, sy = f.w * rx, vn = (b.vx - sx) * nx + (b.vy - sy) * ny;
+    if (vn < 0) { b.vx -= 1.32 * vn * nx; b.vy -= 1.32 * vn * ny; snd.tock(-vn * .6); } }
+  for (const o of stars) if (!o.on && s.flash < now - 1.6 && (b.x - o.x) ** 2 + (b.y - o.y) ** 2 < 420) { o.on = true; o.t = now; add(250); const n = stars.filter(q => q.on).length; snd.chime([0, 2, 4, 7, 9, 12, 14][n - 1]);
+    if (n === 7) { add(5000); s.mult = Math.min(5, s.mult + 1); s.flash = now; snd.all(); say('Созвездие! Очки ×' + s.mult, 2.4); } }
+  if (s.flash > 0 && now - s.flash > 1.6 && stars.every(o => o.on)) stars.forEach(o => o.on = false);
+  if (now > hole.cool && (b.x - hole.x) ** 2 + (b.y - hole.y) ** 2 < 150 && Math.hypot(b.vx, b.vy) < 800) { s.mode = 'held'; s.tm = now + .9; b.x = hole.x; b.y = hole.y; b.vx = b.vy = 0; add(500); snd.hole(); }
+  if (b.y > TH + 24) { s.mode = 'lost'; s.tm = now + 1.1; snd.drain(); }
+}
+function launch() { if (s.mode === 'play' && inLane() && Math.abs(b.vy) < 120) { b.vy = -(880 + 1000 * s.charge); snd.spring(s.charge); } s.charge = 0; s.charging = false; }
+function nudge(now) { if (s.mode !== 'play' || s.tilted) return; s.shake = 1; s.tilt += 1; hit(180, .7, .12, .5);
+  if (!inLane()) { b.vx += (Math.random() - .5) * 260; b.vy -= 170; }
+  if (s.tilt > 2.6) { s.tilted = true; snd.buzz(); say('ТИЛТ', 2.5); } }
+
+// ---------- Управление ----------
+function flip(i, on) { if (on && !flips[i].on && !s.tilted && s.mode !== 'over') snd.clack(); flips[i].on = on; }
+addEventListener('keydown', e => { if (e.repeat) { if (['Space', 'ArrowUp', 'ArrowLeft', 'ArrowRight'].includes(e.code)) e.preventDefault(); return; } audio();
+  if (e.code === 'ArrowLeft' || e.code === 'KeyZ' || e.code === 'KeyA') flip(0, true);
+  else if (e.code === 'ArrowRight' || e.code === 'Slash' || e.code === 'KeyD') flip(1, true);
+  else if (e.code === 'Space') { if (s.mode === 'over') newGame(); else s.charging = true; }
+  else if (e.code === 'ArrowUp' || e.code === 'KeyW') nudge(performance.now() / 1000);
+  else if (e.code === 'Enter') { if (s.mode === 'over') newGame(); } else return; e.preventDefault(); });
+addEventListener('keyup', e => { if (e.code === 'ArrowLeft' || e.code === 'KeyZ' || e.code === 'KeyA') flip(0, false); else if (e.code === 'ArrowRight' || e.code === 'Slash' || e.code === 'KeyD') flip(1, false); else if (e.code === 'Space' && s.charging) launch(); });
+const stage = $('stage'); let ptr = null;
+stage.addEventListener('pointerdown', e => { audio(); if (s.mode === 'over') { newGame(); return; } if (inLane()) { s.charging = true; ptr = 'p'; } else { ptr = e.clientX < innerWidth / 2 ? 0 : 1; flip(ptr, true); } });
+addEventListener('pointerup', () => { if (ptr === 'p') launch(); else if (ptr !== null) flip(ptr, false); ptr = null; });
+$('new').onclick = () => { audio(); newGame(); };
+$('auto').onclick = e => { audio(); s.auto = !s.auto; e.target.classList.toggle('on', s.auto); flips[0].on = flips[1].on = false; if (s.auto && s.mode === 'over') newGame(); };
+$('snd').onclick = e => { audio(); sndOn = !sndOn; e.target.classList.toggle('on', sndOn); out.gain.value = sndOn ? .8 : 0; };
+$('slope').oninput = e => { G = 8800 * Math.sin(e.target.value * PI / 180); $('slopev').textContent = String(e.target.value).replace('.', ',') + '°'; };
+let capT = 0; function say(t, sec) { $('cap').textContent = t; $('cap').style.opacity = 1; capT = performance.now() / 1000 + sec; }
+
+// ---------- Рисование: неподвижный слой ----------
+const field = new Path2D(); field.moveTo(L, TH); field.lineTo(L, 270); field.arc(270, 270, 244, PI, 2 * PI); field.lineTo(RO, TH); field.closePath();
+function rr(c, x, y, w, h, r) { c.beginPath(); c.moveTo(x + r, y); c.arcTo(x + w, y, x + w, y + h, r); c.arcTo(x + w, y + h, x, y + h, r); c.arcTo(x, y + h, x, y, r); c.arcTo(x, y, x + w, y, r); c.closePath(); }
+function wood(c, x, y, w, h, base, dark, n, seed) { c.fillStyle = base; c.fillRect(x, y, w, h); let r = seed; const rnd = () => (r = r * 16807 % 2147483647) / 2147483647;
+  for (let i = 0; i < n; i++) { const x0 = x + rnd() * w, amp = 2 + rnd() * 8, ph = rnd() * 7, fr = .003 + rnd() * .009; c.strokeStyle = `rgba(${dark},${.03 + rnd() * .08})`; c.lineWidth = .5 + rnd() * 2.4;
+    c.beginPath(); for (let yy = y; yy <= y + h + 20; yy += 20) { const xx = x0 + Math.sin(yy * fr + ph) * amp; yy === y ? c.moveTo(xx, yy) : c.lineTo(xx, yy); } c.stroke(); } }
+function brass(c, p, w) { c.lineCap = c.lineJoin = 'round'; c.save(); c.shadowColor = 'rgba(0,0,0,.5)'; c.shadowBlur = 7 * S; c.shadowOffsetX = 3 * S; c.shadowOffsetY = 5 * S; c.strokeStyle = '#463207'; c.lineWidth = w + 2; c.stroke(p); c.restore();
+  c.strokeStyle = '#a97c26'; c.lineWidth = w; c.stroke(p); c.strokeStyle = '#e2bd5c'; c.lineWidth = w * .55; c.stroke(p); c.strokeStyle = 'rgba(255,247,212,.9)'; c.lineWidth = w * .15; c.stroke(p); }
+function knob(c, x, y, r) { c.save(); c.shadowColor = 'rgba(0,0,0,.5)'; c.shadowBlur = 5 * S; c.shadowOffsetX = 2 * S; c.shadowOffsetY = 3 * S; const q = c.createRadialGradient(x - r * .35, y - r * .4, r * .1, x, y, r);
+  q.addColorStop(0, '#fff6cf'); q.addColorStop(.4, '#e0b750'); q.addColorStop(1, '#6b4b10'); c.fillStyle = q; c.beginPath(); c.arc(x, y, r, 0, 7); c.fill(); c.restore(); }
+function star4(c, x, y, r, rot = 0) { c.beginPath(); for (let i = 0; i < 8; i++) { const a = rot + i * PI / 4, q = i % 2 ? r * .36 : r; c.lineTo(x + Math.cos(a) * q, y + Math.sin(a) * q); } c.closePath(); }
+function spaced(c, t, x, y, sp) { let w = 0; for (const ch of t) w += c.measureText(ch).width + sp; let xx = x - (w - sp) / 2; c.textAlign = 'left'; for (const ch of t) { c.fillText(ch, xx, y); xx += c.measureText(ch).width + sp; } }
+const aprons = [0, 1].map(m => { const X = x => m ? 2 * CX - x : x, p = new Path2D(); p.moveTo(X(L), 690); p.lineTo(X(150), 790); p.lineTo(X(152), 838); p.lineTo(X(205), TH); p.lineTo(X(L), TH); p.closePath(); return p; });
+function buildStatic() {
+  st.width = cv.width; st.height = cv.height; const c = st.getContext('2d'); c.setTransform(S, 0, 0, S, 0, 0);
+  rr(c, 0, 0, TW, TH, 22); c.save(); c.clip(); wood(c, 0, 0, TW, TH, '#3a2414', '14,6,2', 170, 7); c.restore();
+  c.save(); c.clip(field); wood(c, L, 0, RO - L, TH, '#cba267', '100,58,18', 280, 3);
+  const lg = c.createRadialGradient(250, 340, 40, 250, 470, 600); lg.addColorStop(0, 'rgba(255,238,196,.3)'); lg.addColorStop(1, 'rgba(46,20,4,.5)'); c.fillStyle = lg; c.fillRect(0, 0, TW, TH);
+  c.fillStyle = 'rgba(58,28,8,.38)'; c.fillRect(R, 0, RO - R, TH);
+  // гравировка: астролябия, созвездие, россыпь звёзд
+  c.strokeStyle = 'rgba(74,38,10,.55)'; c.fillStyle = 'rgba(74,38,10,.6)'; c.lineWidth = 1.2;
+  for (const r of [130, 122, 58]) { c.beginPath(); c.arc(250, 330, r, 0, 7); c.stroke(); }
+  for (let i = 0; i < 72; i++) { const a = i * PI / 36, r0 = i % 6 ? 122 : 112; c.beginPath(); c.moveTo(250 + Math.cos(a) * r0, 330 + Math.sin(a) * r0); c.lineTo(250 + Math.cos(a) * 130, 330 + Math.sin(a) * 130); c.stroke(); }
+  c.setLineDash([3, 6]); c.beginPath(); [2, 4, 6, 5, 3, 1, 0].forEach((k, i) => i ? c.lineTo(stars[k].x, stars[k].y) : c.moveTo(stars[k].x, stars[k].y)); c.stroke(); c.setLineDash([]);
+  let r = 11; const rnd = () => (r = r * 16807 % 2147483647) / 2147483647;
+  for (let i = 0; i < 26; i++) { star4(c, 50 + rnd() * 400, 110 + rnd() * 590, 2 + rnd() * 4, rnd()); c.fill(); }
+  c.font = '600 21px Charter,"Iowan Old Style",Georgia,serif'; spaced(c, 'ЗВЕЗДОЧЁТ', 250, 752, 7);
+  c.font = '600 9px -apple-system,Helvetica,Arial,sans-serif'; spaced(c, 'ФАБУЛА · 5.2', 250, 768, 3); spaced(c, '500', hole.x, hole.y + 34, 2);
+  c.restore();
+  // фартуки с окошками счёта
+  aprons.forEach((p, m) => { c.save(); c.shadowColor = 'rgba(0,0,0,.55)'; c.shadowBlur = 10 * S; c.shadowOffsetY = 4 * S; c.fillStyle = '#3a2414'; c.fill(p); c.restore(); c.save(); c.clip(p); wood(c, m ? 290 : L, 680, 190, 250, '#4a2d18', '14,6,2', 60, 5 + m); c.restore(); });
+  c.fillStyle = '#e6c874'; c.font = '600 9px -apple-system,Helvetica,Arial,sans-serif'; spaced(c, 'СЧЁТ', 92, 838, 3); spaced(c, 'ШАРЫ', 404, 838, 3);
+  rr(c, 40, 844, 104, 36, 5); c.fillStyle = '#16100a'; c.fill(); c.strokeStyle = '#c59a3c'; c.lineWidth = 2; c.stroke();
+  // латунь: борт, перегородка, направляющие
+  const rim = new Path2D(); rim.moveTo(L, 690); rim.lineTo(L, 270); rim.arc(270, 270, 244, PI, 2 * PI); rim.lineTo(RO, TH - 8); brass(c, rim, 7);
+  const div = new Path2D(); div.moveTo(R, 250); div.lineTo(R, TH - 8); brass(c, div, 6);
+  const gd = new Path2D(); gd.moveTo(L, 690); gd.lineTo(150, 790); gd.moveTo(R, 690); gd.lineTo(350, 790); brass(c, gd, 7);
+  for (const sl of slings) { const p = new Path2D(); sl.pts.forEach(([x, y], i) => i ? p.lineTo(x, y) : p.moveTo(x, y)); p.closePath();
+    c.save(); c.shadowColor = 'rgba(0,0,0,.5)'; c.shadowBlur = 8 * S; c.shadowOffsetX = 3 * S; c.shadowOffsetY = 5 * S; c.fillStyle = '#4a2d18'; c.fill(p); c.restore(); c.strokeStyle = '#c59a3c'; c.lineWidth = 1.5; c.stroke(p);
+    const [x, y] = sl.pts.reduce((a, q) => [a[0] + q[0] / 3, a[1] + q[1] / 3], [0, 0]); c.fillStyle = '#e6c874'; star4(c, x, y, 9, PI / 4); c.fill(); sl.pts.forEach(([px, py]) => knob(c, px, py, 5)); }
+  for (const p of pegs) { c.fillStyle = '#7a2418'; c.beginPath(); c.arc(p.x, p.y, p.r + 1.5, 0, 7); c.fill(); knob(c, p.x, p.y, p.r - 1.5); }
+  knob(c, hole.x, hole.y, 19); const hg = c.createRadialGradient(hole.x + 3, hole.y + 4, 2, hole.x, hole.y, 14); hg.addColorStop(0, '#000'); hg.addColorStop(1, '#2a1a0a'); c.fillStyle = hg; c.beginPath(); c.arc(hole.x, hole.y, 13.5, 0, 7); c.fill();
+  for (const o of stars) { c.fillStyle = 'rgba(40,20,6,.75)'; c.beginPath(); c.arc(o.x, o.y, 14, 0, 7); c.fill(); c.strokeStyle = '#c59a3c'; c.lineWidth = 1.6; c.stroke(); c.fillStyle = 'rgba(150,110,50,.55)'; star4(c, o.x, o.y, 10); c.fill(); }
+  for (const f of flips) knob(c, f.px, f.py, 4);
+}
+
+// ---------- Рисование: кадр ----------
+function draw(now) {
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(st, 0, 0); g.setTransform(S, 0, 0, S, 0, 0);
+  const fl = now - s.flash < 1.6 ? .5 + .5 * Math.sin(now * 30) : 0;
+  g.globalCompositeOperation = 'lighter';
+  for (const o of stars) { const k = o.on ? Math.max(fl, Math.min(1, .75 + .5 * Math.exp(-(now - o.t) * 3))) : 0; if (k <= 0) continue;
+    const q = g.createRadialGradient(o.x, o.y, 1, o.x, o.y, 34); q.addColorStop(0, `rgba(255,214,120,${.85 * k})`); q.addColorStop(.35, `rgba(255,170,50,${.4 * k})`); q.addColorStop(1, 'rgba(255,150,30,0)'); g.fillStyle = q; g.beginPath(); g.arc(o.x, o.y, 34, 0, 7); g.fill();
+    g.fillStyle = `rgba(255,240,200,${k})`; star4(g, o.x, o.y, 10); g.fill(); }
+  g.globalCompositeOperation = 'source-over';
+  for (const sl of slings) { const k = Math.max(0, 1 - (now - sl.s.t) * 7), w = sl.s, nx = (w.y2 - w.y1), ny = -(w.x2 - w.x1), nl = Math.hypot(nx, ny), sg = (CX - w.x1) * nx > 0 ? 1 : -1, ox = sg * nx / nl * (2 + k * 7), oy = sg * ny / nl * (2 + k * 7);
+    g.strokeStyle = k > 0 ? '#ff7a55' : '#8c2a1c'; g.lineWidth = 3.5; g.lineCap = 'round'; g.beginPath(); g.moveTo(w.x1, w.y1); g.quadraticCurveTo((w.x1 + w.x2) / 2 + ox * 2, (w.y1 + w.y2) / 2 + oy * 2, w.x2, w.y2); g.stroke(); }
+  // калитка шахты
+  g.strokeStyle = '#d8dadd'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(R, 140); g.lineTo(R - 3, 248); g.stroke();
+  for (const c of bells) { const k = Math.max(0, 1 - (now - c.t) * 4), r = c.r * (1 + .1 * k); g.save(); g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 10 * S; g.shadowOffsetX = 4 * S; g.shadowOffsetY = 7 * S;
+    let q = g.createRadialGradient(c.x - 9, c.y - 10, 2, c.x, c.y, r); q.addColorStop(0, '#fff8d8'); q.addColorStop(.3, '#e6bf58'); q.addColorStop(.78, '#96691a'); q.addColorStop(1, '#4e350a'); g.fillStyle = q; g.beginPath(); g.arc(c.x, c.y, r, 0, 7); g.fill(); g.restore();
+    g.strokeStyle = 'rgba(70,45,8,.6)'; g.lineWidth = 1.2; g.beginPath(); g.arc(c.x, c.y, r * .72, 0, 7); g.stroke();
+    q = g.createRadialGradient(c.x - 4, c.y - 5, 1, c.x, c.y, r * .42); q.addColorStop(0, '#fffbe8'); q.addColorStop(.5, '#edc965'); q.addColorStop(1, '#8a5f16'); g.fillStyle = q; g.beginPath(); g.arc(c.x, c.y, r * .42, 0, 7); g.fill();
+    g.fillStyle = '#4e350a'; g.beginPath(); g.arc(c.x, c.y, 2.6, 0, 7); g.fill();
+    if (k > 0) { g.globalCompositeOperation = 'lighter'; g.fillStyle = `rgba(255,220,130,${k * .45})`; g.beginPath(); g.arc(c.x, c.y, r * 1.5, 0, 7); g.fill(); g.globalCompositeOperation = 'source-over'; } }
+  // пружина
+  const py = plSeg.y1; g.strokeStyle = '#8f9499'; g.lineWidth = 2; g.beginPath(); for (let i = 0; i <= 18; i++) { const yy = py + 8 + (TH - 10 - py - 8) * i / 18; g.lineTo(494 + (i % 2 ? 9 : -9), yy); } g.stroke();
+  g.fillStyle = '#6d5216'; g.fillRect(490, py + 4, 8, TH - py); g.fillStyle = '#e2bd5c'; rr(g, 479, py, 30, 7, 2); g.fill();
+  for (const f of flips) { g.save(); g.translate(f.px, f.py); g.rotate(f.a); g.shadowColor = 'rgba(0,0,0,.55)'; g.shadowBlur = 9 * S; g.shadowOffsetX = 3 * S; g.shadowOffsetY = 6 * S;
+    g.beginPath(); g.moveTo(0, -11); g.lineTo(f.len, -6); g.arc(f.len, 0, 6, -PI / 2, PI / 2); g.lineTo(0, 11); g.arc(0, 0, 11, PI / 2, PI * 1.5); g.closePath();
+    const q = g.createLinearGradient(0, -11, 0, 11); q.addColorStop(0, '#fbf4df'); q.addColorStop(.55, '#e4d6b0'); q.addColorStop(1, '#a8966a'); g.fillStyle = q; g.fill(); g.shadowColor = 'transparent';
+    g.strokeStyle = '#8c2a1c'; g.lineWidth = 2.6; g.stroke(); g.restore(); knob(g, f.px, f.py, 5); }
+  if (s.mode === 'play' || s.mode === 'held') { const k = s.mode === 'held' ? .8 : 1, r = BR * k;
+    g.fillStyle = 'rgba(0,0,0,.33)'; g.beginPath(); g.ellipse(b.x + 4, b.y + 7, r * 1.05, r * .95, 0, 0, 7); g.fill();
+    const q = g.createRadialGradient(b.x - 4, b.y - 5, .5, b.x, b.y, r); q.addColorStop(0, '#fff'); q.addColorStop(.22, '#e3e7ea'); q.addColorStop(.7, '#7c8388'); q.addColorStop(1, '#25282c'); g.fillStyle = q; g.beginPath(); g.arc(b.x, b.y, r, 0, 7); g.fill();
+    g.strokeStyle = 'rgba(255,190,96,.45)'; g.lineWidth = 2; g.beginPath(); g.arc(b.x, b.y, r - 2.2, .5, 2.2); g.stroke(); }
+  // барабаны счёта и запас шаров
+  s.disp += (s.score - s.disp) * .16; if (Math.abs(s.score - s.disp) < .5) s.disp = s.score;
+  g.save(); rr(g, 42, 846, 100, 32, 4); g.clip(); g.font = '600 22px ui-monospace,"SF Mono",Menlo,monospace'; g.textAlign = 'center'; g.textBaseline = 'middle';
+  for (let k = 0; k < 5; k++) { const fr = s.disp / Math.pow(10, k), base = Math.floor(fr), f0 = fr - base, roll = k === 0 ? f0 : Math.max(0, (f0 - .9) * 10), x = 132 - k * 20;
+    g.fillStyle = '#efe6cf'; g.fillRect(x - 9, 846, 18, 32); g.fillStyle = '#1b130a';
+    g.fillText(String(base % 10), x, 863 - roll * 26); g.fillText(String((base + 1) % 10), x, 863 + 26 - roll * 26); }
+  const sh = g.createLinearGradient(0, 846, 0, 878); sh.addColorStop(0, 'rgba(0,0,0,.6)'); sh.addColorStop(.3, 'rgba(0,0,0,0)'); sh.addColorStop(.7, 'rgba(0,0,0,0)'); sh.addColorStop(1, 'rgba(0,0,0,.6)'); g.fillStyle = sh; g.fillRect(42, 846, 100, 32); g.restore();
+  for (let i = 0; i < 3; i++) { const x = 382 + i * 22; g.fillStyle = '#16100a'; g.beginPath(); g.arc(x, 862, 9, 0, 7); g.fill();
+    if (i < 3 - s.ball) { const q = g.createRadialGradient(x - 3, 859, .5, x, 862, 7.5); q.addColorStop(0, '#fff'); q.addColorStop(.6, '#8a9095'); q.addColorStop(1, '#2a2d31'); g.fillStyle = q; g.beginPath(); g.arc(x, 862, 7.5, 0, 7); g.fill(); } }
+}
+
+// ---------- Цикл ----------
+function resize() { const h = Math.min(innerHeight * .95, (innerWidth - 24) * TH / TW), dpr = Math.min(devicePixelRatio || 1, 2); cv.style.height = h + 'px'; cv.style.width = h * TW / TH + 'px';
+  S = h / TH * dpr; cv.width = Math.round(TW * S); cv.height = Math.round(TH * S); if (cv.width > 1) buildStatic(); }
+addEventListener('resize', resize); resize();
+let last = 0, acc = 0; const H = 1 / 480;
+function frame(ms) { const now = ms / 1000, dt = Math.min(.05, last ? now - last : .016); last = now; requestAnimationFrame(frame);
+  if (cv.width < 2) { resize(); return; }
+  // пружина и автопилот
+  if (s.charging) s.charge = Math.min(1, s.charge + dt / .9); plSeg.y1 = plSeg.y2 = 871 + 26 * s.charge;
+  if (s.auto && s.mode === 'play') { if (inLane() && Math.abs(b.vy) < 30) { s.autoT += dt; s.charging = true; if (s.autoT > .55 + Math.random() * .4) { launch(); s.autoT = 0; } }
+    else { s.autoT = 0; const dn = b.vy > -150 && b.y > 742 && b.y < 806, want = [dn && b.x > 140 && b.x < 256, dn && b.x >= 244 && b.x < 360];
+      for (let i = 0; i < 2; i++) { s.af[i] -= dt; if (want[i] && s.af[i] < -.22) { s.af[i] = .12; snd.clack(); } flips[i].on = s.af[i] > 0; } } }
+  acc += dt; while (acc >= H) { step(H, now); acc -= H; }
+  if (s.mode === 'held' && now > s.tm) { s.mode = 'play'; hole.cool = now + .8; b.vx = 240 + Math.random() * 120; b.vy = 300 + Math.random() * 100; snd.clack(); }
+  if (s.mode === 'lost' && now > s.tm) { if (s.ball >= 3) { s.mode = 'over'; if (s.auto) setTimeout(() => { if (s.auto && s.mode === 'over') newGame(); }, 2500); } else { s.ball++; newBall(); } }
+  if (s.mode === 'play') { const v = Math.hypot(b.vx, b.vy); s.still = v < 10 && !inLane() ? s.still + dt : 0; if (s.still > 2.2) { b.vx += (Math.random() - .5) * 300; b.vy -= 200; s.still = 0; }
+    if (rollG) rollG.gain.setTargetAtTime(Math.min(.11, v / 9000), ac.currentTime, .05); } else if (rollG) rollG.gain.setTargetAtTime(0, ac.currentTime, .05);
+  s.tilt = Math.max(0, s.tilt - dt * .45); s.shake *= Math.exp(-dt * 9);
+  cv.style.translate = s.shake > .01 ? `${Math.sin(now * 70) * 7 * s.shake}px ${-6 * s.shake}px` : '';
+  draw(now);
+  const cap = $('cap'); if (now > capT) { const t = s.mode === 'over' ? `Игра окончена · ${s.score.toLocaleString('ru-RU')} · пробел – ещё раз` : s.mode === 'play' && inLane() && Math.abs(b.vy) < 30 && !s.auto ? (s.charging ? 'Отпускай!' : 'Пробел: держи и отпусти') : '';
+    if (t) cap.textContent = t; cap.style.opacity = t ? 1 : 0; }
+  $('stat').textContent = `счёт ${s.score.toLocaleString('ru-RU')} · шар ${Math.min(3, s.ball)} из 3${s.mult > 1 ? ' · ×' + s.mult : ''} · рекорд ${best.toLocaleString('ru-RU')}`;
+}
+requestAnimationFrame(frame);
+window.__p = { s, b, flips, stars, bells, newGame, step, launch, nudge };
+</script>
+</body>
+</html>

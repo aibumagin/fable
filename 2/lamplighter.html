@@ -1,0 +1,351 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Фонарщик · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--acc:#ffd84d;--line:rgba(242,238,227,.3)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
+canvas{touch-action:none;position:fixed;inset:0;width:100%;height:100%;display:block}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.8)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;max-width:52ch;font-size:14.5px}
+.hud kbd{font:12px ui-monospace,"SF Mono",Menlo,monospace;border:1px solid var(--line);border-radius:5px;padding:1px 5px;background:rgba(12,12,11,.5)}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(12,12,11,.6);color:var(--ink);padding:9px 14px;border-radius:999px;text-shadow:none;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.7)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;pointer-events:none}
+.bar>*{pointer-events:auto}
+.stat{font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px;text-shadow:0 1px 10px rgba(0,0,0,.9)}
+.cap{position:fixed;z-index:4;left:50%;bottom:78px;transform:translateX(-50%);pointer-events:none;font:500 25px/1.25 Charter,"Iowan Old Style","PT Serif",Georgia,serif;color:#fff3d2;text-align:center;
+  text-shadow:0 2px 14px rgba(0,0,0,.95),0 0 34px rgba(0,0,0,.8);max-width:90vw;transition:opacity .5s;opacity:0}
+.err{position:fixed;inset:0;display:none;align-items:center;justify-content:center;padding:40px;text-align:center}
+@media (max-width:900px){.hud p{display:none}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Фонарщик</h1>
+    <p>Вечер, туман, спящий город. Ходи по улицам и зажигай фонари: каждый будит свой квартал. Когда загорятся все двенадцать, откроется пирс к маяку.<br>
+    <kbd>W</kbd><kbd>A</kbd><kbd>S</kbd><kbd>D</kbd> или стрелки – идти · <kbd>пробел</kbd> – зажечь</p>
+  </div>
+  <nav class="nav"><a href="pinball.html">← Назад</a><a href="index.html">Все демо</a><a href="chocolate.html">Дальше →</a></nav>
+</div>
+<div class="cap" id="cap"></div>
+<div class="bar">
+  <button class="pill" id="again">Заново</button><button class="pill on" id="snd">Звук</button>
+  <span class="stat" id="stat"></span>
+</div>
+<div class="err" id="err">Этому демо нужен WebGL 2. Откройте его в свежем Chrome или Safari.</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id), cv = $('c'), gl = cv.getContext('webgl2', { antialias: true, alpha: false });
+if (!gl) $('err').style.display = 'flex';
+else (function () {
+// ---------- Карта города: 27 × 18 клеток по три метра ----------
+const T = 3, GW = 27, GH = 18, wx = c => (c - 13) * T, wz = r => (r - 6.5) * T;
+const map = Array.from({ length: GH }, () => Array(GW).fill('h'));
+const fill = (c0, r0, c1, r1, ch) => { for (let r = r0; r <= r1; r++) for (let c = c0; c <= c1; c++) map[r][c] = ch; };
+fill(0, 13, 26, 17, 'w');
+for (const r of [1, 4, 9, 12]) fill(1, r, 25, r, '.');
+for (const c of [1, 7, 19, 25]) fill(c, 1, c, 12, '.');
+fill(13, 1, 13, 12, '.'); fill(8, 5, 18, 8, '.'); fill(2, 5, 6, 8, 'g'); fill(20, 5, 24, 8, 'g');
+for (const [c, r] of [[2, 5], [6, 5], [2, 8], [6, 8], [20, 5], [24, 5], [20, 8], [24, 8], [9, 5], [17, 5], [9, 8], [17, 8], [11, 6], [15, 6]]) map[r][c] = 't';
+map[6][13] = 'C'; map[6][4] = 'M'; map[6][22] = 'K';
+fill(13, 13, 13, 15, 'p'); fill(12, 16, 14, 16, 'r');
+const LAMPS = [[10, 12, 'Набережная'], [21, 12, 'Рыбацкий причал', 'boats'], [3, 12, 'Соляной спуск'], [4, 9, 'Старая мельница', 'mill'], [13, 9, 'Часовая площадь', 'clock'], [22, 9, 'Городской сад', 'carousel'],
+  [7, 4, 'Гончарная улица'], [19, 4, 'Пекарский переулок'], [1, 2, 'Западная застава'], [25, 2, 'Восточная застава'], [9, 1, 'Трамвайное кольцо', 'tram'], [17, 1, 'Верхняя улица']]
+  .map(([c, r, name, life]) => ({ x: wx(c) + 1.15, z: wz(r) - 1.15, name, life, lit: false, t0: -99, a: 0 }));
+const LH = { x: 0, y: 9.3, z: wz(16), lit: false, t0: -99, a: 0 }, MILL = [wx(4), wz(6)], CAR = [wx(22), wz(6)], TOWER = [0, wz(6)], TRZ = wz(1);
+const BOATS = [[-25, 20.2, .3], [22, 20.4, -.2], [-9, 21.6, .1]];
+
+// ---------- Геометрия: всё из коробок, призм и цилиндров ----------
+let V = [], XF = null; const N3 = (x, y, z) => { const l = Math.hypot(x, y, z) || 1; return [x / l, y / l, z / l]; };
+function vtx(p, n, c, m) { if (XF) { p = XF(p, 1); n = XF(n, 0); } V.push(p[0], p[1], p[2], n[0], n[1], n[2], c[0], c[1], c[2], m); }
+function tri(a, b, c, n, col, m) { vtx(a, n, col, m); vtx(b, n, col, m); vtx(c, n, col, m); }
+function quad(a, b, c, d, n, col, m) { tri(a, b, c, n, col, m); tri(a, c, d, n, col, m); }
+function box(x, y, z, sx, sy, sz, col, m = 0, top) { const x0 = x - sx, x1 = x + sx, y0 = y - sy, y1 = y + sy, z0 = z - sz, z1 = z + sz;
+  quad([x0, y0, z1], [x1, y0, z1], [x1, y1, z1], [x0, y1, z1], [0, 0, 1], col, m); quad([x1, y0, z0], [x0, y0, z0], [x0, y1, z0], [x1, y1, z0], [0, 0, -1], col, m);
+  quad([x1, y0, z1], [x1, y0, z0], [x1, y1, z0], [x1, y1, z1], [1, 0, 0], col, m); quad([x0, y0, z0], [x0, y0, z1], [x0, y1, z1], [x0, y1, z0], [-1, 0, 0], col, m);
+  quad([x0, y1, z1], [x1, y1, z1], [x1, y1, z0], [x0, y1, z0], [0, 1, 0], top || col, m === 1 ? 0 : m); }
+function gable(x, y, z, sx, sz, h, col, wall, ax) {
+  if (ax) { quad([x - sx, y, z + sz], [x + sx, y, z + sz], [x + sx, y + h, z], [x - sx, y + h, z], N3(0, sz, h), col, 6); quad([x + sx, y, z - sz], [x - sx, y, z - sz], [x - sx, y + h, z], [x + sx, y + h, z], N3(0, sz, -h), col, 6);
+    tri([x + sx, y, z + sz], [x + sx, y, z - sz], [x + sx, y + h, z], [1, 0, 0], wall, 0); tri([x - sx, y, z - sz], [x - sx, y, z + sz], [x - sx, y + h, z], [-1, 0, 0], wall, 0); }
+  else { quad([x + sx, y, z + sz], [x + sx, y, z - sz], [x, y + h, z - sz], [x, y + h, z + sz], N3(h, sx, 0), col, 6); quad([x - sx, y, z - sz], [x - sx, y, z + sz], [x, y + h, z + sz], [x, y + h, z - sz], N3(-h, sx, 0), col, 6);
+    tri([x - sx, y, z + sz], [x + sx, y, z + sz], [x, y + h, z + sz], [0, 0, 1], wall, 0); tri([x + sx, y, z - sz], [x - sx, y, z - sz], [x, y + h, z - sz], [0, 0, -1], wall, 0); } }
+function pyr(x, y, z, sx, sz, h, col, m = 6) { const a = [x - sx, y, z + sz], b = [x + sx, y, z + sz], c = [x + sx, y, z - sz], d = [x - sx, y, z - sz], t = [x, y + h, z];
+  tri(a, b, t, N3(0, sz, h), col, m); tri(b, c, t, N3(h, sx, 0), col, m); tri(c, d, t, N3(0, sz, -h), col, m); tri(d, a, t, N3(-h, sx, 0), col, m); }
+function cyl(x, y, z, r0, r1, h, n, col, m = 0) { for (let i = 0; i < n; i++) { const a0 = i / n * 6.2832, a1 = (i + 1) / n * 6.2832, am = (a0 + a1) / 2, c0 = Math.cos(a0), s0 = Math.sin(a0), c1 = Math.cos(a1), s1 = Math.sin(a1);
+  const cc = typeof col === 'function' ? col(i) : col, nn = N3(Math.cos(am) * h, r0 - r1, Math.sin(am) * h);
+  quad([x + c0 * r0, y, z + s0 * r0], [x + c1 * r0, y, z + s1 * r0], [x + c1 * r1, y + h, z + s1 * r1], [x + c0 * r1, y + h, z + s0 * r1], nn, cc, m);
+  if (r1 > 0) tri([x, y + h, z], [x + c0 * r1, y + h, z + s0 * r1], [x + c1 * r1, y + h, z + s1 * r1], [0, 1, 0], cc, m === 5 ? 5 : 0); } }
+function disc(x, y, z, r, n, col, m = 0) { for (let i = 0; i < n; i++) { const a0 = i / n * 6.2832, a1 = (i + 1) / n * 6.2832; tri([x, y, z], [x + Math.cos(a0) * r, y + Math.sin(a0) * r, z], [x + Math.cos(a1) * r, y + Math.sin(a1) * r, z], [0, 0, 1], col, m); } }
+function rot(axis, ang, px, py, pz, fn) { const c = Math.cos(ang), s = Math.sin(ang);
+  XF = axis === 'y' ? (p, w) => { const x = p[0] - px * w, z = p[2] - pz * w; return [px * w + x * c + z * s, p[1], pz * w - x * s + z * c]; }
+                    : (p, w) => { const x = p[0] - px * w, y = p[1] - py * w; return [px * w + x * c - y * s, py * w + x * s + y * c, p[2]]; };
+  fn(); XF = null; }
+
+let seed = 7; const rnd = () => (seed = seed * 16807 % 2147483647) / 2147483647;
+const WALL = [[.74, .58, .40], [.68, .42, .31], [.60, .58, .50], [.78, .70, .56], [.52, .56, .58], [.68, .50, .44], [.64, .64, .48], [.72, .64, .50]];
+const ROOF = [[.40, .15, .11], [.30, .13, .10], [.20, .21, .25], [.34, .22, .15]];
+const IRON = [.05, .055, .06], STONE = [.48, .46, .42], chim = [];
+function buildStatic() {
+  V = [];
+  quad([-140, 0, 18], [140, 0, 18], [140, 0, -110], [-140, 0, -110], [0, 1, 0], [.2, .2, .2], 2);                 // суша
+  quad([-140, -1.2, 18], [140, -1.2, 18], [140, 0, 18], [-140, 0, 18], [0, 0, 1], [.2, .19, .18], 0);            // стенка набережной
+  quad([-140, -.5, 90], [140, -.5, 90], [140, -.5, 18], [-140, -.5, 18], [0, 1, 0], [.02, .05, .07], 4);         // вода
+  box(0, .17, 17.75, 40.5, .17, .2, STONE);                                                                       // парапет
+  const isH = (c, r) => c >= 0 && r >= 0 && c < GW && r <= 12 && map[r][c] === 'h';
+  for (let r = 0; r <= 12; r++) for (let c = 0; c < GW; c++) { const ch = map[r][c], x = wx(c), z = wz(r);
+    if (ch === 'g' || ch === 't' && (c < 8 || c > 18) || ch === 'M' || ch === 'K') quad([x - 1.5, .03, z + 1.5], [x + 1.5, .03, z + 1.5], [x + 1.5, .03, z - 1.5], [x - 1.5, .03, z - 1.5], [0, 1, 0], [.1, .15, .06], 3);
+    if (ch === 't') { const k = .8 + rnd() * .5, a = [[.46, .25, .06], [.52, .33, .08], [.36, .16, .05], [.22, .29, .08]][Math.floor(rnd() * 4)];
+      cyl(x, 0, z, .16, .12, 1.3, 6, [.14, .09, .05]); cyl(x, 1.1, z, .45 * k, 1.05 * k, .55 * k, 8, a.map(v => v * .8)); cyl(x, 1.1 + .55 * k, z, 1.05 * k, .9 * k, .55 * k, 8, a); cyl(x, 1.1 + 1.1 * k, z, .9 * k, .35 * k, .55 * k, 8, a.map(v => v * 1.15)); cyl(x, 1.1 + 1.65 * k, z, .35 * k, 0, .2 * k, 8, a.map(v => v * 1.25)); }
+    if (ch !== 'h') continue;
+    const lx = isH(c - 1, r) ? 1.5 : 1.28, rx = isH(c + 1, r) ? 1.5 : 1.28, nz = isH(c, r - 1) ? 1.5 : 1.28, sz = isH(c, r + 1) ? 1.5 : 1.28;
+    const cx = x + (rx - lx) / 2, cz = z + (sz - nz) / 2, hx = (lx + rx) / 2, hz = (nz + sz) / 2, edge = r === 0 || c === 0 || c === 26;
+    const h = 2.7 + rnd() * 2.3 + (edge ? 1.6 : 0) + (c > 7 && c < 19 ? .7 : 0), wc = WALL[Math.floor(rnd() * WALL.length)], rc = ROOF[Math.floor(rnd() * ROOF.length)], rh = .8 + rnd() * .8, k = rnd();
+    box(cx, h / 2, cz, hx, h / 2, hz, wc, 1);
+    if (k < .42) gable(cx, h, cz, hx + .1, hz + .1, rh, rc, wc, 1); else if (k < .84) gable(cx, h, cz, hx + .1, hz + .1, rh, rc, wc, 0); else pyr(cx, h, cz, hx + .1, hz + .1, rh * 1.1, rc);
+    if (rnd() < .5) { const qx = cx + (rnd() - .5) * hx * .9, qz = cz + (rnd() - .5) * hz * .5, top = h + rh * .5 + .5; box(qx, top - .5, qz, .17, .5, .17, [.28, .14, .1]); if (!edge) chim.push({ x: qx, y: top, z: qz, ph: rnd() }); } }
+  // фонарные столбы
+  for (const l of LAMPS) { cyl(l.x, 0, l.z, .2, .14, .35, 6, IRON); cyl(l.x, .35, l.z, .08, .06, 2.5, 6, IRON); box(l.x, 2.83, l.z, .26, .03, .26, IRON); }
+  // часовая башня
+  box(TOWER[0], 3.4, TOWER[1], 1.15, 3.4, 1.15, STONE); box(TOWER[0], 7.3, TOWER[1], .95, .5, .95, [.4, .38, .35]); pyr(TOWER[0], 7.8, TOWER[1], 1.2, 1.2, 2, ROOF[2]); box(TOWER[0], 6.82, TOWER[1], 1.25, .06, 1.25, [.36, .34, .32]);
+  // мельница, карусель, рельсы
+  cyl(MILL[0], 0, MILL[1], 1.3, .95, 4.6, 8, [.7, .66, .58]); cyl(MILL[0], 4.6, MILL[1], 1.1, 0, 1.3, 8, ROOF[3], 6); box(MILL[0], .7, MILL[1] + 1.2, .35, .7, .08, [.25, .15, .08]);
+  cyl(CAR[0], 0, CAR[1], 1.45, 1.45, .25, 12, [.42, .2, .16]); cyl(CAR[0], .25, CAR[1], .14, .14, 2.4, 6, [.7, .6, .3]);
+  for (const o of [-.45, .45]) box(0, .03, TRZ + o, 33.5, .03, .05, [.3, .3, .32], 0);
+  // пирс, скала, маяк, столбы ворот
+  box(0, -.1, 22.5, 1.35, .1, 4.5, [.24, .18, .12], 7); for (const z of [19, 21.5, 24, 26.5]) for (const x of [-1.2, 1.2]) cyl(x, -1, z, .13, .13, 1, 5, [.12, .09, .06]);
+  cyl(0, -1, LH.z, 4.6, 3.6, 1.3, 9, [.2, .2, .21]);
+  cyl(0, .3, LH.z, 1.45, 1.25, 3, 10, [.8, .78, .74]); cyl(0, 3.3, LH.z, 1.25, 1.08, 2.6, 10, [.6, .14, .1]); cyl(0, 5.9, LH.z, 1.08, .94, 2.6, 10, [.8, .78, .74]);
+  cyl(0, 8.5, LH.z, 1.3, 1.3, .15, 10, IRON); cyl(0, 9.85, LH.z, .85, 0, .8, 10, [.6, .14, .1], 6); box(0, .9, LH.z - 1.42, .3, .6, .06, [.2, .12, .07]);
+  for (const x of [-1.45, 1.45]) cyl(x, 0, 18.3, .12, .12, 1.25, 6, IRON);
+  return new Float32Array(V);
+}
+
+// ---------- Шейдеры ----------
+const VS = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec3 aN; layout(location=2) in vec3 aC; layout(location=3) in float aM;
+uniform mat4 uVP; out vec3 vP, vN, vC; flat out float vM;
+void main(){ vP=aP; vN=aN; vC=aC; vM=aM; gl_Position=uVP*vec4(aP,1.); }`;
+const FS = `#version 300 es
+precision highp float;
+in vec3 vP, vN, vC; flat in float vM; out vec4 o;
+uniform vec3 uCam, uFogC; uniform vec4 uL[14], uLc[14]; uniform float uT, uFog;
+float h21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
+float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+1.),f.x), f.y); }
+void main(){
+  vec3 P=vP, n=normalize(vN), alb=vC, emis=vec3(0); float spec=0., gloss=16.; int m=int(vM+.5);
+  float rv=0., wob=.8+.4*vn(P.xz*.3+uT*.03); for(int i=0;i<14;i++) rv=max(rv, uL[i].w*smoothstep(uLc[i].w*wob, uLc[i].w*.45*wob, length(uL[i].xz-P.xz)));
+  if(m==1){ // стена с окнами: окно зажигается, когда до него дошёл свет фонаря
+    vec2 tg=vec2(-n.z,n.x); vec2 wc=vec2(dot(P.xz,tg)+.5, (P.y-.55)/1.2), ci=floor(wc), cf=fract(wc);
+    float win=step(.27,cf.x)*step(cf.x,.73)*step(.2,cf.y)*step(cf.y,.8)*step(0.,wc.y);
+    vec2 q=P.xz-n.xz*.3; float hs=h21(ci*1.7+vec2(floor(q.x/3.+.5),floor(q.y/3.))*9.1+tg*3.3);
+    float lit=step(hs,.62)*step(.12+.8*fract(hs*13.7), rv), bar=1.-.6*step(abs(cf.x-.5),.03);
+    alb*=(.8+.3*vn(P.xy*2.5+P.z*2.))*(.72+.28*smoothstep(0.,1.6,P.y));
+    alb=mix(alb, vec3(.025,.035,.055), win); emis=mix(vec3(1.,.58,.22), vec3(1.,.84,.55), fract(hs*5.3))*win*lit*bar*1.7; spec=win*.5; gloss=40.;
+  } else if(m==2){ // мокрая брусчатка
+    vec2 g=P.xz*vec2(2.6,3.1); g.x+=.5*floor(g.y); vec2 ci=floor(g), cf=fract(g); float e=smoothstep(0.,.1,cf.x)*smoothstep(1.,.9,cf.x)*smoothstep(0.,.12,cf.y)*smoothstep(1.,.88,cf.y), hs=h21(ci);
+    alb=vec3(.23,.21,.2)*(.55+.55*hs)*(.3+.7*e); spec=.75*e*(.3+.7*hs); gloss=26.; n=normalize(n+vec3((cf.x-.5)*.5,0.,(cf.y-.5)*.5)*(1.-e*.8));
+  } else if(m==3){ alb=mix(vec3(.06,.12,.04), vec3(.15,.16,.05), vn(P.xz*1.7))*(.65+.45*vn(P.xz*9.));
+  } else if(m==4){ float w=sin(P.x*1.3+uT*1.1+sin(P.z*.7+uT*.6)), w2=cos(P.z*2.3-uT*1.4+P.x*.5); n=normalize(vec3(w*.22+w2*.08,1.,w2*.22)); spec=2.2; gloss=70.;
+  } else if(m==5){ emis=alb*2.4; alb=vec3(0);
+  } else if(m==6){ float row=fract(P.y*3.4); alb*=(.62+.38*smoothstep(0.,.3,row))*(.8+.35*h21(floor(vec2((P.x+P.z)*2.6, P.y*3.4)))); spec=.12;
+  } else if(m==7){ float pl=fract(P.z*1.9); alb*=(.65+.4*h21(vec2(floor(P.z*1.9),3.)))*smoothstep(0.,.07,pl); }
+  vec3 Vd=normalize(uCam-P), L=vec3(0), S=vec3(0);
+  for(int i=0;i<14;i++){ float a=uL[i].w; if(a<.002) continue; vec3 d=uL[i].xyz-P; float dl=length(d); vec3 l=d/dl;
+    float fall=a*pow(clamp(1.-dl/(uLc[i].w*1.3),0.,1.),2.);
+    L+=uLc[i].rgb*fall*(max(dot(n,l),0.)*.85+.15)*2.4; S+=uLc[i].rgb*fall*pow(max(dot(reflect(-l,n),Vd),0.),gloss)*spec*2.; }
+  vec3 amb=mix(vec3(.03,.035,.06), vec3(.1,.115,.18), n.y*.5+.5)*(.3+.7*rv);
+  vec3 col=alb*(amb+L)+S+emis;
+  float f=max(1.-exp(-length(uCam-P)*uFog), (1.-rv)*(.66+.14*vn(P.xz*.22+uT*.04)));
+  col=mix(col, uFogC, f);
+  col=col/(1.+col*.35); o=vec4(pow(col, vec3(.4545)), 1.);
+}`;
+const SVS = `#version 300 es
+layout(location=0) in vec3 aP; layout(location=1) in vec2 aO; layout(location=2) in vec2 aU; layout(location=3) in vec4 aC; layout(location=4) in float aK;
+uniform mat4 uV, uPr; out vec2 vU; out vec4 vC; flat out float vK;
+void main(){ vec4 p=uV*vec4(aP,1.); p.xy+=aO; if(aK<1.5) p.z+=.8; gl_Position=uPr*p; vU=aU; vC=aC; vK=aK; }`;
+const SFS = `#version 300 es
+precision highp float;
+in vec2 vU; in vec4 vC; flat in float vK; out vec4 o;
+void main(){ float a; if(vK>1.5) a=pow(max(1.-abs(vU.x),0.),1.6)*(1.-vU.y)*smoothstep(0.,.05,vU.y);
+  else { float d=dot(vU,vU); a=exp(-d*4.5)*smoothstep(1.,.55,d); if(vK<.5) a+=exp(-d*70.)*1.6; }
+  a*=vC.a; o=vec4(vC.rgb*a, vK>.5&&vK<1.5 ? a : 0.); }`;
+function prog(vs, fs, names) { const mk = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+  const p = gl.createProgram(); gl.attachShader(p, mk(gl.VERTEX_SHADER, vs)); gl.attachShader(p, mk(gl.FRAGMENT_SHADER, fs)); gl.linkProgram(p); if (!gl.getProgramParameter(p, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(p));
+  const u = {}; for (const n of names) u[n] = gl.getUniformLocation(p, n); return { p, u }; }
+const pm = prog(VS, FS, ['uVP', 'uCam', 'uFogC', 'uL', 'uLc', 'uT', 'uFog']), ps = prog(SVS, SFS, ['uV', 'uPr']);
+function vao(fmt) { const v = gl.createVertexArray(), b = gl.createBuffer(); gl.bindVertexArray(v); gl.bindBuffer(gl.ARRAY_BUFFER, b); const stride = fmt.reduce((a, n) => a + n, 0) * 4; let off = 0;
+  fmt.forEach((n, i) => { gl.enableVertexAttribArray(i); gl.vertexAttribPointer(i, n, gl.FLOAT, false, stride, off); off += n * 4; }); return { v, b }; }
+const sta = vao([3, 3, 3, 1]), dyn = vao([3, 3, 3, 1]), spv = vao([3, 2, 2, 4, 1]);
+const staData = buildStatic(); gl.bindBuffer(gl.ARRAY_BUFFER, sta.b); gl.bufferData(gl.ARRAY_BUFFER, staData, gl.STATIC_DRAW); const staN = staData.length / 10;
+for (const c of chim) { let bi = 13, bd = 15; LAMPS.forEach((l, i) => { const d = Math.hypot(l.x - c.x, l.z - c.z); if (d < bd) { bd = d; bi = i; } }); c.lamp = bi; }
+
+// ---------- Матрицы ----------
+const persp = (fov, asp, n, f) => { const t = 1 / Math.tan(fov / 2); return [t / asp, 0, 0, 0, 0, t, 0, 0, 0, 0, (f + n) / (n - f), -1, 0, 0, 2 * f * n / (n - f), 0]; };
+function look(e, c) { let fx = c[0] - e[0], fy = c[1] - e[1], fz = c[2] - e[2]; const fl = Math.hypot(fx, fy, fz); fx /= fl; fy /= fl; fz /= fl; let sx = -fz, sz = fx; const sl = Math.hypot(sx, sz); sx /= sl; sz /= sl;
+  const ux = -sz * fy, uy = sz * fx - sx * fz, uz = sx * fy; return [sx, ux, -fx, 0, 0, uy, -fy, 0, sz, uz, -fz, 0, -(sx * e[0] + sz * e[2]), -(ux * e[0] + uy * e[1] + uz * e[2]), fx * e[0] + fy * e[1] + fz * e[2], 1]; }
+function mul(a, b) { const o = new Array(16); for (let c = 0; c < 4; c++) for (let r = 0; r < 4; r++) { let s = 0; for (let k = 0; k < 4; k++) s += a[k * 4 + r] * b[c * 4 + k]; o[c * 4 + r] = s; } return o; }
+
+// ---------- Состояние ----------
+const WARM = [1, .72, .38], PR = .42;
+const st = { lit: 0, t0: 0, time: 0, done: false, fin: 0, gate: 0, mill: 0, millV: 0, car: 0, carV: 0, clockT: 0, walk: 0, moving: false, cam: [0, 0, 13.5] };
+const life = {}, pl = { x: 0, z: 13.5 }, tram = { x: -29, dir: 1, wait: 1.5 }, key = {};
+let ptr = null, capT = 0, capHold = '';
+function reset() { LAMPS.forEach(l => { l.lit = false; l.a = 0; l.t0 = -99; }); LH.lit = false; LH.a = 0; for (const k in life) delete life[k]; Object.assign(st, { lit: 0, t0: 0, time: 0, done: false, fin: 0, gate: 0, millV: 0, carV: 0 }); pl.x = 0; pl.z = 13.5; tram.x = -29; tram.dir = 1; tram.wait = 1.5; say('Первый фонарь рядом – слева, у самой воды', 6); }
+function say(t, sec) { $('cap').textContent = t; $('cap').style.opacity = 1; capT = performance.now() / 1000 + sec; }
+function solid(c, r) { if (c < 0 || r < 0 || c >= GW || r >= GH) return 1.5; const ch = map[r][c]; if (ch === '.' || ch === 'g') return 0; if (ch === 'p') return r === 13 && st.lit < 12 ? 1.5 : 0; if (ch === 't') return .4; if (ch === 'M' || ch === 'K') return 1.4; if (ch === 'C') return 1.2; return 1.5; }
+function collide() { const c0 = Math.round(pl.x / T + 13), r0 = Math.floor(pl.z / T + 7);
+  for (let r = r0 - 1; r <= r0 + 1; r++) for (let c = c0 - 1; c <= c0 + 1; c++) { const h = solid(c, r); if (!h) continue; const cx = wx(c), cz = wz(r), qx = Math.max(cx - h, Math.min(pl.x, cx + h)), qz = Math.max(cz - h, Math.min(pl.z, cz + h)); let dx = pl.x - qx, dz = pl.z - qz; const d = Math.hypot(dx, dz);
+    if (d >= PR) continue; if (d < 1e-5) { dx = pl.x - cx; dz = pl.z - cz; const l = Math.hypot(dx, dz) || 1; pl.x = cx + dx / l * (h + PR); pl.z = cz + dz / l * (h + PR); } else { pl.x = qx + dx / d * PR; pl.z = qz + dz / d * PR; } } }
+const near = () => LAMPS.findIndex(l => !l.lit && Math.hypot(l.x - pl.x, l.z - pl.z) < 2.7);
+const atLH = () => Math.hypot(LH.x - pl.x, LH.z - pl.z) < 3.7;
+function act(now) { audio(); const i = near();
+  if (i >= 0) { const l = LAMPS[i]; l.lit = true; l.t0 = now; st.lit++; if (l.life) life[l.life] = now; if (st.lit === 1) st.t0 = now; snd.ignite(st.lit - 1); if (l.life === 'clock') snd.clock();
+    say(st.lit === 12 ? 'Все двенадцать горят. Пирс открыт – остался маяк' : `${l.name} · ${st.lit} из 12`, st.lit === 12 ? 7 : 3.5); }
+  else if (st.lit === 12 && !LH.lit && atLH()) { LH.lit = true; LH.t0 = now; st.done = true; snd.horn(); const s = Math.round(st.time); say(`Город проснулся. Тринадцать огней за ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`, 30); } }
+
+// ---------- Звук ----------
+let ac, out, nbuf, carG, sndOn = true, tuneI = 0, tuneT = 0, stepT = 0;
+function audio() { if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)(); out = ac.createGain(); out.gain.value = sndOn ? .8 : 0; const cmp = ac.createDynamicsCompressor(); out.connect(cmp); cmp.connect(ac.destination);
+  nbuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const w = ac.createBufferSource(); w.buffer = nbuf; w.loop = true; const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.value = 240; const wg = ac.createGain(); wg.gain.value = .09;
+  const lfo = ac.createOscillator(), lg = ac.createGain(); lfo.frequency.value = .11; lg.gain.value = .04; lfo.connect(lg); lg.connect(wg.gain); lfo.start(); w.connect(lp); lp.connect(wg); wg.connect(out); w.start();
+  carG = ac.createGain(); carG.gain.value = 0; carG.connect(out); }
+function hit(freq, q, dur, vol, type = 'bandpass') { if (!ac) return; const t = ac.currentTime, s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(); s.buffer = nbuf; f.type = type; f.frequency.value = freq; f.Q.value = q;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur); s.connect(f); f.connect(g); g.connect(out); s.start(t, Math.random() * 1.5, dur + .02); }
+function tone(f1, dur, vol, type = 'sine', delay = 0, dest) { if (!ac) return; const t = ac.currentTime + delay, o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.value = f1;
+  g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(vol, t + .008); g.gain.exponentialRampToValueAtTime(.0005, t + dur); o.connect(g); g.connect(dest || out); o.start(t); o.stop(t + dur + .03); }
+const PENT = [293.7, 370, 440, 493.9, 587.3, 659.3, 740, 880, 987.8, 1174.7, 1318.5, 1480, 1760];
+const snd = {
+  ignite(n) { hit(2600, .6, .35, .22, 'highpass'); tone(PENT[n], 2.6, .2); tone(PENT[n] * 2, 1.6, .05); tone(PENT[n] * 1.5, 2.2, .06, 'sine', .14); },
+  clock() { for (let i = 0; i < 3; i++) [[1, .22], [2.02, .1], [2.76, .07], [4.1, .03]].forEach(([p, a]) => tone(392 * p, 2.6, a, 'sine', .6 + i * 1.1)); },
+  bell(v) { if (v < .03) return; tone(1568, .5, .12 * v); tone(1568, .5, .12 * v, 'sine', .28); },
+  step() { hit(520 + Math.random() * 380, 2, .05, .09); tone(88, .05, .07); },
+  horn() { if (!ac) return; const t = ac.currentTime, g = ac.createGain(), f = ac.createBiquadFilter(); f.type = 'lowpass'; f.frequency.value = 360; g.gain.setValueAtTime(.0001, t); g.gain.exponentialRampToValueAtTime(.4, t + .35); g.gain.setValueAtTime(.4, t + 2); g.gain.exponentialRampToValueAtTime(.0005, t + 3);
+    for (const fr of [98, 147.2]) { const o = ac.createOscillator(); o.type = 'sawtooth'; o.frequency.value = fr; o.connect(f); o.start(t); o.stop(t + 3.1); } f.connect(g); g.connect(out);
+    PENT.forEach((p, i) => { tone(p, 2.5, .13, 'sine', 2.6 + i * .13); tone(p * 2, 1.2, .03, 'sine', 2.6 + i * .13); }); }
+};
+const TUNE = [72, 76, 79, 77, 74, 71, 72, 76, 79, 84, 0, 83, 81, 77, 74, 79, 76, 72, 74, 77, 71, 72, 0, 0];
+function music() { if (!ac || !life.carousel) return; if (tuneT < ac.currentTime) tuneT = ac.currentTime + .05;
+  while (tuneT < ac.currentTime + .3) { const m = TUNE[tuneI % TUNE.length], f = 440 * Math.pow(2, (m - 69) / 12); if (m) { tone(f, .7, .16, 'triangle', tuneT - ac.currentTime, carG); if (tuneI % 3 === 0) tone(f / 4, .5, .14, 'sine', tuneT - ac.currentTime, carG); } tuneI++; tuneT += .27; } }
+setInterval(music, 120);
+
+// ---------- Управление ----------
+const CODES = { KeyW: 'u', ArrowUp: 'u', KeyS: 'd', ArrowDown: 'd', KeyA: 'l', ArrowLeft: 'l', KeyD: 'r', ArrowRight: 'r' };
+addEventListener('keydown', e => { if (CODES[e.code]) { key[CODES[e.code]] = 1; audio(); e.preventDefault(); } else if (e.code === 'Space' || e.code === 'KeyE' || e.code === 'Enter') { if (!e.repeat) act(performance.now() / 1000); e.preventDefault(); } });
+addEventListener('keyup', e => { if (CODES[e.code]) key[CODES[e.code]] = 0; });
+addEventListener('blur', () => { for (const k in key) key[k] = 0; ptr = null; });
+cv.addEventListener('pointerdown', e => { audio(); ptr = [e.clientX, e.clientY]; cv.setPointerCapture(e.pointerId); if (near() >= 0 || st.lit === 12 && !LH.lit && atLH()) act(performance.now() / 1000); });
+cv.addEventListener('pointermove', e => { if (ptr) ptr = [e.clientX, e.clientY]; });
+cv.addEventListener('pointerup', () => ptr = null); cv.addEventListener('pointercancel', () => ptr = null);
+$('again').onclick = () => { audio(); reset(); };
+$('snd').onclick = e => { audio(); sndOn = !sndOn; e.target.classList.toggle('on', sndOn); out.gain.value = sndOn ? .8 : 0; };
+
+// ---------- Кадр: движение, подвижные детали, огни ----------
+const ease = x => x * x * (3 - 2 * x), clamp = (x, a, b) => Math.max(a, Math.min(b, x));
+function update(dt, now) {
+  let mx = (key.r || 0) - (key.l || 0), mz = (key.d || 0) - (key.u || 0);
+  if (ptr) { const dx = ptr[0] - innerWidth / 2, dy = ptr[1] - innerHeight * .52; if (Math.hypot(dx, dy) > 28) { mx = dx; mz = dy; } }
+  const ml = Math.hypot(mx, mz); st.moving = ml > 0;
+  if (ml > 0) { const sp = 6.6 * dt / ml; pl.x += mx * sp; collide(); pl.z += mz * sp; collide(); st.walk += dt * 9; stepT += dt; if (stepT > .34) { stepT = 0; snd.step(); } }
+  if (st.lit > 0 && !st.done) st.time = now - st.t0;
+  for (const l of LAMPS) if (l.lit) l.a = Math.min(1, l.a + dt / 3.2);
+  if (LH.lit) { LH.a = Math.min(1, LH.a + dt / 5); st.fin = Math.min(1, st.fin + dt / 7); }
+  if (st.lit === 12) st.gate = Math.min(1, st.gate + dt / 1.6);
+  st.millV += ((life.mill ? .85 : 0) - st.millV) * dt * .6; st.mill += st.millV * dt;
+  st.carV += ((life.carousel ? .7 : 0) - st.carV) * dt * .5; st.car += st.carV * dt;
+  if (life.clock) st.clockT += dt;
+  if (life.tram) { if (tram.wait > 0) { tram.wait -= dt; if (tram.wait <= 0) snd.bell(clamp(1 - Math.hypot(tram.x - pl.x, TRZ - pl.z) / 40, 0, 1)); } else { const e = Math.min(1, (29.5 - Math.abs(tram.x)) / 4 + .12); tram.x += tram.dir * 6.5 * e * dt; if (Math.abs(tram.x) >= 29) { tram.x = 29 * tram.dir; tram.dir *= -1; tram.wait = 3.5; } } }
+  if (carG) carG.gain.setTargetAtTime(life.carousel ? Math.max(.12 * st.fin, Math.pow(clamp(1 - Math.hypot(CAR[0] - pl.x, CAR[1] - pl.z) / 36, 0, 1), 2) * .6) : 0, ac.currentTime, .2);
+}
+function buildDyn(now) {
+  V = [];
+  LAMPS.forEach((l, i) => { const f = 1 + .07 * Math.sin(now * 13 + i * 7) * Math.sin(now * 5.3 + i); box(l.x, 3.12, l.z, .23, .27, .23, l.lit ? WARM.map(v => v * l.a * f + .04) : [.07, .08, .1], l.lit ? 5 : 0); pyr(l.x, 3.39, l.z, .27, .27, .2, IRON, 0); });
+  // фонарь фонарщика на шесте
+  const by = 1.36 + (st.moving ? Math.sin(st.walk) * .05 : Math.sin(now * 1.6) * .02), sw = st.moving ? Math.sin(st.walk * .5) * .06 : 0;
+  box(pl.x + .42, 1.05, pl.z, .045, 1.05, .045, [.24, .15, .08]); box(pl.x + .2, 2.06, pl.z, .27, .035, .035, [.24, .15, .08]); box(pl.x + sw, by + .5, pl.z, .015, .2, .015, IRON);
+  box(pl.x + sw, by, pl.z, .2, .24, .2, [1, .8, .48], 5); pyr(pl.x + sw, by + .24, pl.z, .27, .27, .2, IRON, 0); box(pl.x + sw, by - .26, pl.z, .23, .03, .23, IRON);
+  // трамвай
+  const tx = tram.x, tl = life.tram ? 1 : 0;
+  box(tx, .62, TRZ, 1.7, .32, .62, [.55, .12, .1]); box(tx, 1.22, TRZ, 1.7, .3, .62, [.8, .74, .6]); box(tx, 1.58, TRZ, 1.78, .07, .68, [.25, .22, .2]);
+  box(tx, 1.24, TRZ + .63, 1.5, .2, .02, tl ? [1, .85, .55] : [.05, .06, .08], tl ? 5 : 0); for (const o of [-1.1, 1.1]) cyl(tx + o, .08, TRZ, .3, .3, .22, 6, IRON);
+  // мельница
+  const hz = MILL[1] + 1.18; for (let k = 0; k < 4; k++) rot('z', st.mill + k * Math.PI / 2, MILL[0], 4, hz, () => { box(MILL[0], 5.45, hz, .06, 1.45, .04, [.3, .2, .1]); box(MILL[0] + .3, 5.7, hz + .02, .26, 1.1, .02, [.82, .78, .66]); });
+  box(MILL[0], 4, hz, .16, .16, .1, IRON);
+  // карусель
+  rot('y', st.car, CAR[0], 0, CAR[1], () => { cyl(CAR[0], 2.3, CAR[1], 1.65, .12, .85, 12, i => i % 2 ? [.75, .16, .12] : [.85, .78, .6], 6);
+    for (let k = 0; k < 6; k++) { const a = k / 6 * 6.2832, x = CAR[0] + Math.cos(a) * 1.1, z = CAR[1] + Math.sin(a) * 1.1, y = .75 + Math.sin(st.car * 3 + k * 2.1) * .18; box(x, 1.5, z, .025, .85, .025, [.7, .6, .3]);
+      box(x, y, z, .2, .16, .2, [[.75, .2, .15], [.2, .4, .6], [.85, .7, .25]][k % 3]); box(x, 2.28, z, .07, .07, .07, life.carousel ? [1, .8, .45] : [.1, .1, .1], life.carousel ? 5 : 0); } });
+  // часы: до фонаря стоят, потом идут
+  const cz = TOWER[1] + 1.16, mn = 5.4 + st.clockT * .35; disc(TOWER[0], 5.6, cz, .85, 16, life.clock ? [.9, .82, .6] : [.5, .5, .48], life.clock ? 5 : 0); disc(TOWER[0], 5.6, cz - .005, .95, 16, IRON);
+  rot('z', -mn, TOWER[0], 5.6, cz, () => box(TOWER[0], 5.93, cz + .02, .04, .36, .01, IRON)); rot('z', -mn / 12 - 1, TOWER[0], 5.6, cz, () => box(TOWER[0], 5.82, cz + .03, .055, .25, .01, IRON));
+  // лодки
+  BOATS.forEach(([x, z, a], i) => { const y = -.42 + Math.sin(now * 1.3 + i * 2) * .06; rot('y', a + Math.sin(now * .7 + i) * .05, x, 0, z, () => { box(x, y, z, 1.15, .2, .42, [.3, .18, .1]); box(x + .3, y + .38, z, .42, .2, .3, [.6, .55, .45]); box(x - .5, y + .9, z, .03, .75, .03, [.2, .13, .07]);
+    box(x - .5, y + 1.7, z, .08, .1, .08, life.boats ? [1, .8, .45] : [.08, .08, .1], life.boats ? 5 : 0); }); });
+  // ворота пирса и фонарь маяка
+  rot('z', ease(st.gate) * 1.35, -1.45, 1.05, 18.3, () => { box(0, 1.05, 18.3, 1.45, .07, .06, [.75, .15, .1]); box(.5, 1.05, 18.31, .35, .075, .065, [.85, .8, .7]); });
+  cyl(0, 8.65, LH.z, .62, .62, 1.2, 10, LH.lit ? [1, .92, .7] : [.1, .12, .15], LH.lit ? 5 : 0);
+  return new Float32Array(V);
+}
+let SP = [];
+function spr(x, y, z, size, c, a, k = 0) { for (const [u, v] of [[-1, -1], [1, -1], [1, 1], [-1, -1], [1, 1], [-1, 1]]) SP.push(x, y, z, u * size, v * size, u, v, c[0], c[1], c[2], a, k); }
+function beam(x, y, z, ang, len, hw, c, a) { const co = Math.cos(ang), si = Math.sin(ang), ex = x + co * len, ez = z + si * len, px = -si, pz = co, q = [[x - px * .4, z - pz * .4, -1, 0], [x + px * .4, z + pz * .4, 1, 0], [ex + px * hw, ez + pz * hw, 1, 1], [ex - px * hw, ez - pz * hw, -1, 1]];
+  for (const i of [0, 1, 2, 0, 2, 3]) SP.push(q[i][0], y, q[i][1], 0, 0, q[i][2], q[i][3], c[0], c[1], c[2], a, 2); }
+const FOGS = Array.from({ length: 26 }, () => [rnd() * 90 - 45, .8 + rnd() * 2.5, rnd() * 56 - 24, 5 + rnd() * 5, rnd() * 6]);
+function buildSprites(now) {
+  SP = [];
+  for (const [x, y, z, sz, ph] of FOGS) spr(((x + now * .5 + 60) % 100) - 50, y, z + Math.sin(now * .1 + ph) * 2, sz, [.42, .46, .56], .07, 1);
+  for (const c of chim) { const a = c.lamp < 12 ? LAMPS[c.lamp].a : LH.a; if (a < .6) continue; for (let k = 0; k < 3; k++) { const u = (now * .22 + c.ph + k / 3) % 1; spr(c.x + u * u * 1.4, c.y + u * 2.6, c.z, .25 + u * .8, [.5, .5, .55], .3 * Math.sin(u * Math.PI) * (a - .6) * 2.5, 1); } }
+  LAMPS.forEach((l, i) => { if (l.lit) { const fl = 1 + 2.2 * Math.exp(-(now - l.t0) * 1.8); spr(l.x, 3.1, l.z, .6 * fl, WARM, Math.min(1, l.a * 3 + .3)); spr(l.x, 3.1, l.z, 4.2, WARM, .3 * l.a); }
+    else spr(l.x, 3.1, l.z, .34, [.45, .65, 1], .3 + .22 * Math.sin(now * 3 + i * 1.7)); });
+  spr(pl.x, 1.36, pl.z, .55, [1, .8, .5], .9); spr(pl.x, 1.36, pl.z, 2.8, [1, .75, .42], .2);
+  if (life.tram) { spr(tram.x - tram.dir * 1.75, .95, TRZ, .35, [1, .9, .7], .9); spr(tram.x - tram.dir * 1.75, .95, TRZ, 1.6, [1, .85, .6], .16); }
+  if (life.carousel) for (let k = 0; k < 6; k++) { const a = st.car + k / 6 * 6.2832; spr(CAR[0] + Math.cos(a) * 1.1, 2.28, CAR[1] - Math.sin(a) * 1.1, .5, [1, .75, .4], .5); }
+  if (life.boats) BOATS.forEach(([x, z], i) => { spr(x - .5, 1.3 + Math.sin(now * 1.3 + i * 2) * .06, z, .3, WARM, .8); spr(x - .5, 1.3, z, 1.5, WARM, .14); });
+  if (LH.lit) { spr(0, 9.3, LH.z, 1.3, [1, .95, .8], LH.a); spr(0, 9.3, LH.z, 9, [1, .9, .7], .2 * LH.a); const a = now * .55; beam(0, 9.3, LH.z, a, 62, 7, [1, .93, .75], .34 * LH.a); beam(0, 9.3, LH.z, a + Math.PI, 62, 7, [1, .93, .75], .34 * LH.a); }
+  else if (st.lit === 12) spr(0, 9.3, LH.z, .8, [.5, .7, 1], .5 + .4 * Math.sin(now * 3));
+  return new Float32Array(SP);
+}
+const ARR = '→↘↓↙←↖↑↗', Lb = new Float32Array(56), Lc = new Float32Array(56);
+function resize() { const d = Math.min(devicePixelRatio || 1, 2), w = Math.round(cv.clientWidth * d), h = Math.round(cv.clientHeight * d); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } }
+let last = 0;
+function frame(ms) { const now = ms / 1000, dt = Math.min(.05, last ? now - last : .016); last = now; requestAnimationFrame(frame); resize(); if (cv.width < 2 || cv.height < 2) return;
+  update(dt, now);
+  const fin = ease(st.fin), asp = cv.width / cv.height, k = (1 + 1.5 * fin) * Math.max(1, 1.45 / asp);
+  const tg = [pl.x * (1 - fin), 0, pl.z * (1 - fin) + 4 * fin]; for (let i = 0; i < 3; i++) st.cam[i] += (tg[i] - st.cam[i]) * Math.min(1, dt * 4);
+  const eye = [st.cam[0], 27 * k, st.cam[2] + 20.5 * k], Vm = look(eye, [st.cam[0], 0, st.cam[2] - 1]), Pm = persp(34 * Math.PI / 180, asp, 1, 400), VP = mul(Pm, Vm);
+  // огни: фонарь в руке, двенадцать городских, маяк
+  const put = (i, x, y, z, a, c, br, R) => { Lb.set([x, y, z, a], i * 4); Lc.set([c[0] * br, c[1] * br, c[2] * br, R], i * 4); };
+  put(0, pl.x, 1.5, pl.z, 1, [1, .78, .45], .9, 9);
+  LAMPS.forEach((l, i) => put(i + 1, l.x, 3.1, l.z, ease(l.a), WARM, 1 + .07 * Math.sin(now * 13 + i * 7) * Math.sin(now * 5.3 + i), 14.5));
+  put(13, LH.x, LH.y, LH.z, ease(LH.a), [1, .9, .7], .26, 78);
+  const fog = [.105 + .02 * fin, .12 + .02 * fin, .175 + .04 * fin], cc = fog.map(v => Math.pow(v / (1 + v * .35), .4545));
+  gl.viewport(0, 0, cv.width, cv.height); gl.clearColor(cc[0], cc[1], cc[2], 1); gl.clear(gl.COLOR_BUFFER_BIT | gl.DEPTH_BUFFER_BIT); gl.enable(gl.DEPTH_TEST); gl.disable(gl.BLEND); gl.depthMask(true);
+  gl.useProgram(pm.p); gl.uniformMatrix4fv(pm.u.uVP, false, VP); gl.uniform3fv(pm.u.uCam, eye); gl.uniform3fv(pm.u.uFogC, fog); gl.uniform4fv(pm.u.uL, Lb); gl.uniform4fv(pm.u.uLc, Lc); gl.uniform1f(pm.u.uT, now); gl.uniform1f(pm.u.uFog, .0135 - .0075 * fin);
+  gl.bindVertexArray(sta.v); gl.drawArrays(gl.TRIANGLES, 0, staN);
+  const dd = buildDyn(now); gl.bindVertexArray(dyn.v); gl.bindBuffer(gl.ARRAY_BUFFER, dyn.b); gl.bufferData(gl.ARRAY_BUFFER, dd, gl.DYNAMIC_DRAW); gl.drawArrays(gl.TRIANGLES, 0, dd.length / 10);
+  const sd = buildSprites(now); gl.useProgram(ps.p); gl.uniformMatrix4fv(ps.u.uV, false, Vm); gl.uniformMatrix4fv(ps.u.uPr, false, Pm); gl.enable(gl.BLEND); gl.blendFunc(gl.ONE, gl.ONE_MINUS_SRC_ALPHA); gl.depthMask(false);
+  gl.bindVertexArray(spv.v); gl.bindBuffer(gl.ARRAY_BUFFER, spv.b); gl.bufferData(gl.ARRAY_BUFFER, sd, gl.DYNAMIC_DRAW); gl.drawArrays(gl.TRIANGLES, 0, sd.length / 12);
+  // подсказки
+  const cap = $('cap'); if (now > capT) { const t = near() >= 0 ? 'Пробел – зажечь фонарь' : st.lit === 12 && !LH.lit && atLH() ? 'Пробел – зажечь маяк' : st.lit < 12 && pl.z > 16.6 && Math.abs(pl.x) < 2 ? 'Пирс закрыт. Сначала – все фонари в городе' : ''; if (t) cap.textContent = t; cap.style.opacity = t ? 1 : 0; }
+  let tx = LH.x, tz = LH.z, bd = 1e9; if (st.lit < 12) for (const l of LAMPS) { const d = Math.hypot(l.x - pl.x, l.z - pl.z); if (!l.lit && d < bd) { bd = d; tx = l.x; tz = l.z; } } else bd = Math.hypot(tx - pl.x, tz - pl.z);
+  const ai = ((Math.round(Math.atan2(tz - pl.z, tx - pl.x) / (Math.PI / 4)) % 8) + 8) % 8, s = Math.round(st.time);
+  $('stat').textContent = `фонари ${st.lit} из 12` + (LH.lit ? ' · маяк горит' : ` · ${st.lit < 12 ? 'ближайший' : 'маяк'} ${ARR[ai]} ${Math.round(bd)} м`) + ` · ${Math.floor(s / 60)}:${String(s % 60).padStart(2, '0')}`;
+}
+reset(); requestAnimationFrame(frame);
+window.__l = { st, pl, LAMPS, LH, life, act, tp(x, z) { pl.x = x; pl.z = z; }, light(i) { const l = LAMPS[i]; pl.x = l.x - .8; pl.z = l.z + .8; act(performance.now() / 1000); }, all() { for (let i = 0; i < 12; i++) this.light(i); } };
+})();
+</script>
+</body>
+</html>

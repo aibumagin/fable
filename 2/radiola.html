@@ -1,0 +1,440 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Радиола · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--acc:#ffd84d;--line:rgba(242,238,227,.3)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{touch-action:none;position:fixed;inset:0;width:100%;height:100%;display:block}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.55)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;max-width:66ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a{border:1px solid var(--line);background:rgba(12,12,11,.5);color:var(--ink);padding:9px 14px;border-radius:999px;text-shadow:none;
+  font-weight:500;font-size:13.5px;line-height:1;text-decoration:none;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover{border-color:rgba(242,238,227,.7)}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;justify-content:space-between;gap:16px;align-items:center;pointer-events:none}
+.stat{font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;text-shadow:0 1px 10px rgba(0,0,0,.8)}
+.stat b{color:var(--acc);font-weight:500}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Радиола</h1>
+    <p>Ламповый приёмник, собранный из кода. Ни одной картинки и ни одной записи: музыка, дикторы, морзянка и шипение эфира считаются на лету. Нажмите «Сеть», дайте лампам прогреться и крутите правую ручку.</p>
+  </div>
+  <nav class="nav"><a href="index.html">Все демо</a><a href="bell.html">Дальше →</a></nav>
+</div>
+<div class="bar"><div class="stat" id="stat">выключено</div><div class="stat">пробел – сеть · ← → – настройка · ↑ ↓ – громкость · 1 2 3 – диапазон</div></div>
+<script>
+'use strict';
+const cv = document.getElementById('c'), ctx = cv.getContext('2d'), statEl = document.getElementById('stat');
+const TAU = Math.PI * 2, clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+const rng = s => () => { s |= 0; s = s + 0x6D2B79F5 | 0; let t = Math.imul(s ^ s >>> 15, 1 | s); t = t + Math.imul(t ^ t >>> 7, 61 | t) ^ t; return ((t ^ t >>> 14) >>> 0) / 4294967296; };
+const hs = (n, s) => { const x = Math.sin(n * 127.1 + s * 311.7) * 43758.5453; return x - Math.floor(x); };
+
+// ---------- Геометрия (условные единицы, кадр 1600×900) ----------
+const CAB = { x: 210, y: 190, w: 1180, h: 520, r: 44 };
+const SPK = { x: 252, y: 234, w: 440, h: 432, r: 26 };
+const DIAL = { x: 730, y: 234, w: 540, h: 250, r: 16 };
+const SX0 = 816, SX1 = 1238, ROWY = [302, 366, 430];
+const EYE = { x: 1318, y: 318, r: 40 };
+const KNOB_V = { x: 806, y: 596, r: 60 }, KNOB_T = { x: 1296, y: 596, r: 60 };
+const KEYS = ['СЕТЬ', 'ДВ', 'СВ', 'КВ'].map((t, i) => ({ t, x: 925 + i * 66, y: 556, w: 60, h: 84 }));
+const BANDS = [
+  { name: 'ДВ', unit: 'кГц', a: 150, b: 408, ticks: [150, 200, 250, 300, 350, 400] },
+  { name: 'СВ', unit: 'кГц', a: 525, b: 1605, ticks: [600, 800, 1000, 1200, 1400, 1600] },
+  { name: 'КВ', unit: 'МГц', a: 3.9, b: 12.1, ticks: [4, 6, 8, 10, 12] }
+];
+const ST = [
+  { band: 0, pos: .14, city: 'Москва', what: 'последние известия', kind: 'voice', p: [112, 3] },
+  { band: 0, pos: .42, city: 'Ленинград', what: 'вальс', kind: 'waltz', p: [1.3] },
+  { band: 0, pos: .68, city: 'Киев', what: 'сигналы точного времени', kind: 'pips', p: [] },
+  { band: 0, pos: .90, city: 'Минск', what: 'марш', kind: 'march', p: [4.1] },
+  { band: 1, pos: .10, city: 'Рига', what: 'ноктюрн', kind: 'piano', p: [2.2] },
+  { band: 1, pos: .36, city: 'Варшава', what: 'диктор читает сводку', kind: 'voice', p: [205, 9] },
+  { band: 1, pos: .63, city: 'Прага', what: 'джаз-оркестр', kind: 'jazz', p: [5.7, 138] },
+  { band: 1, pos: .88, city: 'Будапешт', what: 'танго', kind: 'tango', p: [3.4] },
+  { band: 2, pos: .11, city: 'Берлин', what: 'морзянка', kind: 'morse', p: [] },
+  { band: 2, pos: .33, city: 'Париж', what: 'быстрый джаз', kind: 'jazz', p: [8.8, 176], fade: 1 },
+  { band: 2, pos: .55, city: 'Лондон', what: 'телетайп', kind: 'tty', p: [] },
+  { band: 2, pos: .76, city: 'Рим', what: 'вальс издалека', kind: 'waltz', p: [6.6], fade: 1 },
+  { band: 2, pos: .93, city: 'Токио', what: 'далёкий голос', kind: 'voice', p: [168, 21], fade: 1 }
+];
+
+// ---------- Состояние ----------
+let power = false, warm = 0, warmT = 0, band = 1, tune = .5, tuneTo = .5, vol = .7, lvl = 0, sig = 0, near = null;
+let keyDown = [0, 0, 0, 0], S = 1, OX = 0, OY = 0, DPR = 1, layer, lit;
+
+// ---------- Рисование: помощники ----------
+function rr(g, x, y, w, h, r) { g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r); g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath(); }
+function wood(g, x, y, w, h, r, cols, seed, n) {
+  g.save(); rr(g, x, y, w, h, r); g.clip();
+  const gr = g.createLinearGradient(x, y, x, y + h); cols.forEach((c, i) => gr.addColorStop(i / (cols.length - 1), c)); g.fillStyle = gr; g.fillRect(x, y, w, h);
+  const R = rng(seed);
+  for (let i = 0; i < n; i++) {
+    const yy = y + R() * h, a = R() * 7 + 2, f = .0018 + R() * .004, ph = R() * 9;
+    g.beginPath();
+    for (let xx = x; xx <= x + w + 16; xx += 16) { const v = yy + Math.sin(xx * f + ph) * a + Math.sin(xx * f * 3.1 + ph * 2) * a * .3; xx === x ? g.moveTo(xx, v) : g.lineTo(xx, v); }
+    g.strokeStyle = R() < .55 ? `rgba(18,7,2,${.05 + R() * .17})` : `rgba(205,135,70,${.03 + R() * .08})`; g.lineWidth = .5 + R() * 2.4; g.stroke();
+  }
+  g.restore();
+}
+function brass(g, x0, y0, x1, y1) { const b = g.createLinearGradient(x0, y0, x1, y1); b.addColorStop(0, '#f3dc9a'); b.addColorStop(.3, '#a8813a'); b.addColorStop(.55, '#f7e7b0'); b.addColorStop(.8, '#8a6426'); b.addColorStop(1, '#d9b765'); return b; }
+
+function printDial(g, on) {
+  const ink = on ? '#ffe9b0' : 'rgba(214,190,140,.34)', red = on ? '#ff8a5c' : 'rgba(200,110,80,.4)';
+  g.textBaseline = 'alphabetic';
+  BANDS.forEach((B, i) => {
+    const y = ROWY[i];
+    if (on) { g.shadowColor = 'rgba(255,190,90,.9)'; g.shadowBlur = 9; }
+    g.fillStyle = red; g.font = '600 15px "Helvetica Neue",Arial,sans-serif'; g.textAlign = 'left'; g.fillText(B.name, DIAL.x + 22, y + 5);
+    g.strokeStyle = ink; g.fillStyle = ink; g.lineWidth = 1.3; g.beginPath(); g.moveTo(SX0, y); g.lineTo(SX1, y); g.stroke();
+    g.lineWidth = 1; g.beginPath();
+    for (let k = 0; k <= 60; k++) { const x = SX0 + (SX1 - SX0) * k / 60; g.moveTo(x, y); g.lineTo(x, y - (k % 5 ? 4 : 8)); }
+    g.stroke();
+    g.font = '500 10.5px "Helvetica Neue",Arial,sans-serif'; g.textAlign = 'center';
+    B.ticks.forEach(v => { const x = SX0 + (SX1 - SX0) * (v - B.a) / (B.b - B.a); g.fillText(v, x, y - 13); });
+    g.font = '500 11px "Helvetica Neue",Arial,sans-serif';
+    ST.filter(s => s.band === i).forEach(s => {
+      const x = SX0 + (SX1 - SX0) * s.pos;
+      g.beginPath(); g.moveTo(x, y + 3); g.lineTo(x - 3.5, y + 9); g.lineTo(x + 3.5, y + 9); g.closePath(); g.fill();
+      g.fillText(s.city.toUpperCase(), x, y + 23);
+    });
+    g.textAlign = 'right'; g.font = '500 9.5px "Helvetica Neue",Arial,sans-serif'; g.fillText(B.unit, DIAL.x + DIAL.w - 14, y - 13);
+    g.shadowBlur = 0;
+  });
+}
+
+function build() {
+  if (!innerWidth || !innerHeight) return; // окно ещё не показано – соберём на первом resize
+  DPR = Math.min(2, devicePixelRatio || 1); cv.width = Math.round(innerWidth * DPR); cv.height = Math.round(innerHeight * DPR);
+  S = Math.min(cv.width / 1600, cv.height / 900); OX = (cv.width - 1600 * S) / 2; OY = (cv.height - 900 * S) / 2;
+  layer = document.createElement('canvas'); layer.width = cv.width; layer.height = cv.height;
+  const g = layer.getContext('2d'), W = cv.width, H = cv.height, tY = OY + 716 * S;
+  // стена
+  let gr = g.createLinearGradient(0, 0, 0, tY); gr.addColorStop(0, '#15110e'); gr.addColorStop(1, '#221a14'); g.fillStyle = gr; g.fillRect(0, 0, W, tY);
+  gr = g.createRadialGradient(W * .2, tY * .25, 0, W * .2, tY * .25, W * .6); gr.addColorStop(0, 'rgba(255,196,128,.13)'); gr.addColorStop(1, 'rgba(255,196,128,0)'); g.fillStyle = gr; g.fillRect(0, 0, W, tY);
+  const R = rng(7); g.globalAlpha = .035; // обои: мелкий рисунок
+  for (let i = 0; i < 900; i++) { g.fillStyle = R() < .5 ? '#fff' : '#000'; g.fillRect(R() * W, R() * tY, 1 + R() * 2 * S, 14 * S * R()); }
+  g.globalAlpha = 1;
+  // стол
+  g.setTransform(S, 0, 0, S, OX, OY);
+  const tx = -OX / S - 20, tw = W / S + 40, th = (H - tY) / S + 20;
+  wood(g, tx, 716, tw, th, 0, ['#4a2a16', '#2c170b', '#150a05'], 31, 120);
+  gr = g.createLinearGradient(0, 716, 0, 730); gr.addColorStop(0, 'rgba(255,220,170,.22)'); gr.addColorStop(1, 'rgba(255,220,170,0)'); g.fillStyle = gr; g.fillRect(tx, 716, tw, 14);
+  gr = g.createRadialGradient(800, 730, 60, 800, 730, 720); gr.addColorStop(0, 'rgba(0,0,0,.75)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+  g.save(); g.translate(0, 730); g.scale(1, .16); g.translate(0, -730); g.fillStyle = gr; g.fillRect(0, 100, 1600, 1300); g.restore();
+  // ножки
+  g.fillStyle = '#120a06'; rr(g, 290, 704, 70, 22, 6); g.fill(); rr(g, 1240, 704, 70, 22, 6); g.fill();
+  // корпус
+  g.save(); g.shadowColor = 'rgba(0,0,0,.6)'; g.shadowBlur = 50 * S; g.shadowOffsetY = 18 * S; rr(g, CAB.x, CAB.y, CAB.w, CAB.h, CAB.r); g.fillStyle = '#3a1c0c'; g.fill(); g.restore();
+  wood(g, CAB.x, CAB.y, CAB.w, CAB.h, CAB.r, ['#8a4a22', '#6e3617', '#4a220e', '#34170a'], 11, 300);
+  g.save(); rr(g, CAB.x, CAB.y, CAB.w, CAB.h, CAB.r); g.clip();
+  gr = g.createLinearGradient(0, CAB.y, 0, CAB.y + 90); gr.addColorStop(0, 'rgba(255,230,190,.34)'); gr.addColorStop(.35, 'rgba(255,230,190,.07)'); gr.addColorStop(1, 'rgba(255,230,190,0)'); g.fillStyle = gr; g.fillRect(CAB.x, CAB.y, CAB.w, 90);
+  gr = g.createLinearGradient(CAB.x, 0, CAB.x + CAB.w, 0); gr.addColorStop(0, 'rgba(0,0,0,.45)'); gr.addColorStop(.06, 'rgba(0,0,0,0)'); gr.addColorStop(.94, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.5)'); g.fillStyle = gr; g.fillRect(CAB.x, CAB.y, CAB.w, CAB.h);
+  gr = g.createLinearGradient(0, CAB.y + CAB.h - 60, 0, CAB.y + CAB.h); gr.addColorStop(0, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.5)'); g.fillStyle = gr; g.fillRect(CAB.x, CAB.y + CAB.h - 60, CAB.w, 60);
+  g.restore();
+  g.lineWidth = 2; g.strokeStyle = brass(g, CAB.x, CAB.y, CAB.x + CAB.w, CAB.y + CAB.h); g.globalAlpha = .55; rr(g, CAB.x + 20, CAB.y + 20, CAB.w - 40, CAB.h - 40, CAB.r - 16); g.stroke(); g.globalAlpha = 1;
+  // ткань динамика
+  const pc = document.createElement('canvas'); pc.width = pc.height = 12; const pg = pc.getContext('2d');
+  pg.fillStyle = '#6d5530'; pg.fillRect(0, 0, 12, 12);
+  pg.fillStyle = '#a58a52'; pg.fillRect(0, 0, 5, 5); pg.fillRect(6, 6, 5, 5);
+  pg.fillStyle = '#8b7040'; pg.fillRect(6, 0, 5, 5); pg.fillRect(0, 6, 5, 5);
+  pg.fillStyle = 'rgba(30,18,6,.55)'; pg.fillRect(5, 0, 1, 12); pg.fillRect(11, 0, 1, 12); pg.fillRect(0, 5, 12, 1); pg.fillRect(0, 11, 12, 1);
+  pg.fillStyle = 'rgba(255,240,200,.25)'; pg.fillRect(1, 1, 3, 1); pg.fillRect(7, 7, 3, 1);
+  g.save(); rr(g, SPK.x, SPK.y, SPK.w, SPK.h, SPK.r); g.clip();
+  const pat = g.createPattern(pc, 'repeat'); pat.setTransform(new DOMMatrix().scale(.5)); g.fillStyle = pat; g.fillRect(SPK.x, SPK.y, SPK.w, SPK.h);
+  for (let x = SPK.x + 9; x < SPK.x + SPK.w; x += 18) { g.fillStyle = 'rgba(255,225,150,.16)'; g.fillRect(x, SPK.y, 1.2, SPK.h); }
+  gr = g.createRadialGradient(SPK.x + SPK.w / 2, SPK.y + SPK.h / 2, 30, SPK.x + SPK.w / 2, SPK.y + SPK.h / 2, 190); // диффузор за тканью
+  gr.addColorStop(0, 'rgba(0,0,0,.5)'); gr.addColorStop(.25, 'rgba(0,0,0,.32)'); gr.addColorStop(.92, 'rgba(0,0,0,.2)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(SPK.x, SPK.y, SPK.w, SPK.h);
+  gr = g.createLinearGradient(SPK.x, SPK.y, SPK.x + SPK.w, SPK.y + SPK.h); gr.addColorStop(0, 'rgba(255,240,210,.12)'); gr.addColorStop(.5, 'rgba(0,0,0,0)'); gr.addColorStop(1, 'rgba(0,0,0,.4)'); g.fillStyle = gr; g.fillRect(SPK.x, SPK.y, SPK.w, SPK.h);
+  g.restore();
+  g.lineWidth = 5; g.strokeStyle = 'rgba(0,0,0,.55)'; rr(g, SPK.x - 1, SPK.y - 1, SPK.w + 2, SPK.h + 2, SPK.r); g.stroke();
+  g.lineWidth = 3; g.strokeStyle = brass(g, SPK.x, SPK.y, SPK.x + SPK.w, SPK.y + SPK.h); rr(g, SPK.x - 4, SPK.y - 4, SPK.w + 8, SPK.h + 8, SPK.r + 3); g.stroke();
+  // шильдик
+  g.save(); g.font = 'italic 600 44px Charter,"Iowan Old Style","PT Serif",Georgia,serif'; g.textAlign = 'right'; g.textBaseline = 'alphabetic';
+  g.shadowColor = 'rgba(0,0,0,.7)'; g.shadowBlur = 4; g.shadowOffsetY = 2; g.fillStyle = brass(g, 470, 600, 670, 650); g.fillText('Фабула', SPK.x + SPK.w - 30, SPK.y + SPK.h - 30); g.restore();
+  // шкала: стекло и печать без подсветки
+  g.save(); rr(g, DIAL.x, DIAL.y, DIAL.w, DIAL.h, DIAL.r); g.clip();
+  gr = g.createLinearGradient(0, DIAL.y, 0, DIAL.y + DIAL.h); gr.addColorStop(0, '#0d0906'); gr.addColorStop(1, '#1b120a'); g.fillStyle = gr; g.fillRect(DIAL.x, DIAL.y, DIAL.w, DIAL.h);
+  printDial(g, false); g.restore();
+  g.lineWidth = 6; g.strokeStyle = 'rgba(0,0,0,.6)'; rr(g, DIAL.x - 1, DIAL.y - 1, DIAL.w + 2, DIAL.h + 2, DIAL.r); g.stroke();
+  g.lineWidth = 3; g.strokeStyle = brass(g, DIAL.x, DIAL.y, DIAL.x + DIAL.w, DIAL.y + DIAL.h); rr(g, DIAL.x - 4, DIAL.y - 4, DIAL.w + 8, DIAL.h + 8, DIAL.r + 3); g.stroke();
+  // оправа «глаза» и подпись
+  g.beginPath(); g.arc(EYE.x, EYE.y, EYE.r + 9, 0, TAU); g.fillStyle = brass(g, EYE.x - 50, EYE.y - 50, EYE.x + 50, EYE.y + 50); g.fill();
+  g.beginPath(); g.arc(EYE.x, EYE.y, EYE.r + 3, 0, TAU); g.fillStyle = '#060504'; g.fill();
+  g.font = '600 12px "Helvetica Neue",Arial,sans-serif'; g.textAlign = 'center'; g.fillStyle = 'rgba(240,215,160,.6)'; g.fillText('НАСТРОЙКА', EYE.x, EYE.y + 74);
+  g.font = 'italic 600 30px Charter,Georgia,serif'; g.fillStyle = brass(g, 1280, 400, 1360, 450); g.fillText('5.2', EYE.x, 450);
+  // колодец клавиш и подписи ручек
+  g.fillStyle = '#0a0705'; rr(g, 915, 548, 280, 100, 8); g.fill();
+  g.font = '600 11px "Helvetica Neue",Arial,sans-serif'; g.fillStyle = 'rgba(240,215,160,.6)';
+  g.fillText('ГРОМКОСТЬ', KNOB_V.x, 684); g.fillText('НАСТРОЙКА', KNOB_T.x, 684);
+  [KNOB_V, KNOB_T].forEach(k => { gr = g.createRadialGradient(k.x, k.y + 10, k.r * .7, k.x, k.y + 10, k.r + 26); gr.addColorStop(0, 'rgba(0,0,0,.75)'); gr.addColorStop(1, 'rgba(0,0,0,0)'); g.fillStyle = gr; g.fillRect(k.x - 100, k.y - 90, 200, 200); });
+  // слой подсвеченной печати
+  lit = document.createElement('canvas'); lit.width = Math.ceil(DIAL.w * S); lit.height = Math.ceil(DIAL.h * S);
+  const lg = lit.getContext('2d'); lg.setTransform(S, 0, 0, S, -DIAL.x * S, -DIAL.y * S); printDial(lg, true);
+}
+
+function knob(k, ang) {
+  const g = ctx; g.save(); g.translate(k.x, k.y);
+  let gr = g.createRadialGradient(-k.r * .35, -k.r * .45, 4, 0, 0, k.r); gr.addColorStop(0, '#fff8e6'); gr.addColorStop(.55, '#e2d2ab'); gr.addColorStop(1, '#8f7a52');
+  g.beginPath(); g.arc(0, 0, k.r, 0, TAU); g.fillStyle = gr; g.fill();
+  g.save(); g.rotate(ang); g.lineWidth = 2.2;
+  for (let i = 0; i < 44; i++) { const a = i / 44 * TAU, sh = .5 + .5 * Math.cos(a + ang + 2.2); g.strokeStyle = `rgba(60,40,15,${.18 + .3 * (1 - sh)})`; g.beginPath(); g.moveTo(Math.cos(a) * (k.r - 11), Math.sin(a) * (k.r - 11)); g.lineTo(Math.cos(a) * k.r, Math.sin(a) * k.r); g.stroke(); }
+  g.fillStyle = '#b3261e'; g.beginPath(); g.arc(0, -k.r + 20, 3.6, 0, TAU); g.fill(); g.restore();
+  gr = g.createRadialGradient(-10, -12, 2, 0, 0, k.r - 14); gr.addColorStop(0, '#fffdf2'); gr.addColorStop(1, '#cdbb92'); g.beginPath(); g.arc(0, 0, k.r - 13, 0, TAU); g.fillStyle = gr; g.fill();
+  g.beginPath(); g.arc(0, 0, 15, 0, TAU); g.fillStyle = brass(g, -15, -15, 15, 15); g.fill();
+  g.restore();
+}
+
+function frame(now) {
+  if (!layer) { build(); requestAnimationFrame(frame); return; }
+  const dt = Math.min(.05, (now - (frame.t || now)) / 1000); frame.t = now; const g = ctx;
+  if (power) { warmT += dt; warm += ((warmT > .5 ? 1 : 0) - warm) * Math.min(1, dt * 1.1); } else { warmT = 0; warm += (0 - warm) * Math.min(1, dt * 3.5); }
+  tune += (tuneTo - tune) * Math.min(1, dt * 9);
+  if (A) { A.an.getFloatTimeDomainData(A.buf); let s = 0; for (let i = 0; i < A.buf.length; i++) s += A.buf[i] * A.buf[i]; lvl += (Math.min(1, Math.sqrt(s / A.buf.length) * 5) - lvl) * .25; }
+  const glow = warm * (.93 + .07 * Math.sin(now * .013) * Math.sin(now * .0031));
+  g.setTransform(1, 0, 0, 1, 0, 0); g.drawImage(layer, 0, 0); g.setTransform(S, 0, 0, S, OX, OY);
+  // тёплый свет от шкалы на столе и корпусе
+  if (glow > .01) {
+    g.globalCompositeOperation = 'lighter';
+    let gr = g.createRadialGradient(1000, 740, 10, 1000, 740, 520); gr.addColorStop(0, `rgba(255,170,80,${.16 * glow})`); gr.addColorStop(1, 'rgba(255,170,80,0)');
+    g.save(); g.translate(0, 740); g.scale(1, .28); g.translate(0, -740); g.fillStyle = gr; g.fillRect(300, 300, 1400, 1100); g.restore();
+    g.save(); rr(g, DIAL.x, DIAL.y, DIAL.w, DIAL.h, DIAL.r); g.clip();
+    gr = g.createLinearGradient(0, DIAL.y, 0, DIAL.y + DIAL.h); gr.addColorStop(0, `rgba(255,150,50,${.03 * glow})`); gr.addColorStop(1, `rgba(255,170,70,${.26 * glow})`); g.fillStyle = gr; g.fillRect(DIAL.x, DIAL.y, DIAL.w, DIAL.h);
+    for (let i = 0; i < 3; i++) { const h = 62, y0 = ROWY[i] - 36; g.globalAlpha = glow * (i === band ? 1 : .22); g.drawImage(lit, 0, (y0 - DIAL.y) * S, lit.width, h * S, DIAL.x, y0, DIAL.w, h); }
+    g.globalAlpha = 1; g.restore(); g.globalCompositeOperation = 'source-over';
+    g.fillStyle = `rgba(255,220,160,${.05 * glow * (1 + lvl)})`; rr(g, SPK.x, SPK.y, SPK.w, SPK.h, SPK.r); g.fill();
+  }
+  // стрелка
+  const nx = SX0 + (SX1 - SX0) * tune;
+  g.save(); rr(g, DIAL.x, DIAL.y, DIAL.w, DIAL.h, DIAL.r); g.clip();
+  g.fillStyle = 'rgba(0,0,0,.45)'; g.fillRect(nx + 3, DIAL.y, 3, DIAL.h);
+  g.shadowColor = `rgba(255,60,30,${.9 * glow})`; g.shadowBlur = 12 * S; g.fillStyle = glow > .05 ? '#ff4a2e' : '#8e2a1c'; g.fillRect(nx - 1.2, DIAL.y + 8, 2.4, DIAL.h - 16); g.shadowBlur = 0;
+  let gr = g.createLinearGradient(DIAL.x, DIAL.y, DIAL.x + DIAL.w * .7, DIAL.y + DIAL.h); // блик на стекле
+  gr.addColorStop(0, 'rgba(255,255,255,.13)'); gr.addColorStop(.32, 'rgba(255,255,255,.035)'); gr.addColorStop(.33, 'rgba(255,255,255,0)'); gr.addColorStop(1, 'rgba(255,255,255,0)');
+  g.fillStyle = gr; g.fillRect(DIAL.x, DIAL.y, DIAL.w, DIAL.h); g.restore();
+  // «зелёный глаз»: тёмный сектор сужается при точной настройке
+  g.save(); g.translate(EYE.x, EYE.y); g.beginPath(); g.arc(0, 0, EYE.r, 0, TAU); g.clip();
+  g.fillStyle = '#04100a'; g.fillRect(-50, -50, 100, 100);
+  if (glow > .02) {
+    const fl = 1 + .05 * Math.sin(now * .05) * lvl, half = (1.05 - .97 * clamp(sig * fl, 0, 1)) * .95;
+    gr = g.createRadialGradient(0, 0, 8, 0, 0, EYE.r); gr.addColorStop(0, `rgba(210,255,190,${glow})`); gr.addColorStop(.45, `rgba(70,240,120,${.95 * glow})`); gr.addColorStop(1, `rgba(10,120,50,${.85 * glow})`);
+    g.fillStyle = gr; g.shadowColor = 'rgba(80,255,140,.8)'; g.shadowBlur = 10 * S;
+    g.beginPath(); g.moveTo(0, 0); g.arc(0, 0, EYE.r, Math.PI / 2 + half, Math.PI / 2 - half + TAU); g.closePath(); g.fill(); g.shadowBlur = 0;
+  }
+  g.beginPath(); g.arc(0, 0, 11, 0, TAU); g.fillStyle = '#0b0b0a'; g.fill();
+  gr = g.createLinearGradient(-30, -40, 20, 30); gr.addColorStop(0, 'rgba(255,255,255,.28)'); gr.addColorStop(.4, 'rgba(255,255,255,0)'); g.fillStyle = gr; g.fillRect(-50, -50, 100, 100);
+  g.restore();
+  // клавиши
+  KEYS.forEach((k, i) => {
+    const on = i === 0 ? power : band === i - 1; keyDown[i] += ((on ? 1 : 0) - keyDown[i]) * Math.min(1, dt * 18);
+    const d = keyDown[i] * 7, y = k.y + d; let kg = g.createLinearGradient(0, y, 0, y + k.h);
+    kg.addColorStop(0, on ? '#e9dcb9' : '#fff9ea'); kg.addColorStop(.8, on ? '#cdbd95' : '#ece0c2'); kg.addColorStop(1, '#9d8a61');
+    g.fillStyle = 'rgba(0,0,0,.6)'; rr(g, k.x + 2, y + 6, k.w, k.h, 7); g.fill();
+    g.fillStyle = kg; rr(g, k.x, y, k.w, k.h, 7); g.fill();
+    g.fillStyle = i === 0 ? '#a3251c' : '#3b2a12'; g.font = '700 12px "Helvetica Neue",Arial,sans-serif'; g.textAlign = 'center'; g.fillText(k.t, k.x + k.w / 2, y + 26);
+    if (i === 0) { g.beginPath(); g.arc(k.x + k.w / 2, y + 56, 5, 0, TAU); g.fillStyle = power ? `rgba(255,${90 + 60 * glow | 0},40,1)` : '#4a2018'; g.shadowColor = '#ff6a30'; g.shadowBlur = power ? 12 * S : 0; g.fill(); g.shadowBlur = 0; }
+  });
+  knob(KNOB_V, -2.3 + vol * 4.6); knob(KNOB_T, tune * TAU * 5);
+  // подпись состояния
+  const B = BANDS[band], f = B.a + (B.b - B.a) * tune, fs = band === 2 ? f.toFixed(2).replace('.', ',') : Math.round(f);
+  statEl.innerHTML = !power ? 'выключено' : warm < .6 ? 'лампы греются…' : `${B.name} · ${fs} ${B.unit} · ` + (near && sig > .45 ? `<b>${near.city}</b> – ${near.what}` : 'эфир');
+  requestAnimationFrame(frame);
+}
+
+// ---------- Звук ----------
+let AC = null, A = null;
+const mf = m => 440 * Math.pow(2, (m - 69) / 12);
+function tone(out, type, f, t, dur, v, o = {}) {
+  const g = AC.createGain(), os = AC.createOscillator(); os.type = type; os.frequency.value = f; if (o.det) os.detune.value = o.det;
+  let last = os;
+  if (o.lp) { const fl = AC.createBiquadFilter(); fl.type = 'lowpass'; fl.frequency.value = o.lp; os.connect(fl); last = fl; }
+  if (o.vib) { const l = AC.createOscillator(), lg = AC.createGain(); l.frequency.value = 5.6; lg.gain.value = f * .011; l.connect(lg); lg.connect(os.frequency); l.start(t); l.stop(t + dur + .1); }
+  last.connect(g); g.connect(out);
+  const a = o.att || .008, r = o.rel || .06;
+  g.gain.setValueAtTime(0, t); g.gain.linearRampToValueAtTime(v, t + a);
+  if (o.decay) g.gain.exponentialRampToValueAtTime(v * .002, t + dur);
+  else { g.gain.setValueAtTime(v, t + Math.max(a, dur - r)); g.gain.linearRampToValueAtTime(0, t + Math.max(a, dur - r) + r); }
+  os.start(t); os.stop(t + dur + r + .02);
+}
+function hit(out, t, dur, v, hp) {
+  const s = AC.createBufferSource(), f = AC.createBiquadFilter(), g = AC.createGain(); s.buffer = A.nb; f.type = 'highpass'; f.frequency.value = hp;
+  s.connect(f); f.connect(g); g.connect(out); g.gain.setValueAtTime(v, t); g.gain.exponentialRampToValueAtTime(v * .01, t + dur); s.start(t, Math.random() * 2, dur + .02);
+}
+const MINOR = [0, 2, 3, 5, 7, 8, 10], MAJOR = [0, 2, 4, 5, 7, 9, 11];
+// Мелодия: плавная кривая по ступеням лада, на сильных долях прилипает к ноте аккорда
+function mel(n, seed, scale, base, chord) {
+  const d = clamp(Math.round(6 + 4 * Math.sin(n * .19 + seed) + 2.5 * Math.sin(n * .53 + seed * 1.7)), 0, 13);
+  let m = base + 12 * Math.floor(d / 7) + scale[d % 7];
+  if (chord) for (let k = 0; k <= 3; k++) { if (chord.includes(((m + k) % 12 + 12) % 12)) { m += k; break; } if (chord.includes(((m - k) % 12 + 12) % 12)) { m -= k; break; } }
+  return m;
+}
+const accord = (out, m, t, dur, v, lp) => { tone(out, 'sawtooth', mf(m), t, dur, v, { det: 7, lp, att: .03 }); tone(out, 'sawtooth', mf(m), t, dur, v, { det: -7, lp, att: .03 }); };
+const piano = (out, m, t, dur, v) => { tone(out, 'triangle', mf(m), t, dur, v, { decay: 1 }); tone(out, 'sine', mf(m) * 2, t, dur * .6, v * .3, { decay: 1 }); };
+
+const GEN = {
+  waltz(out, seed) { // ля минор, три четверти
+    const sd = 60 / 164, ch = [[9, 0, 4], [9, 0, 4], [2, 5, 9], [2, 5, 9], [4, 8, 11], [4, 8, 11], [9, 0, 4], [4, 8, 11]], rt = [45, 45, 50, 50, 52, 52, 45, 40];
+    return { sd, step(t) {
+      const n = Math.round(t / sd), b = n % 3, bar = Math.floor(n / 3) % 8, c = ch[bar];
+      if (b === 0) tone(out, 'triangle', mf(rt[bar]), t, .5, .5, { decay: 1 });
+      else c.forEach(pc => tone(out, 'sawtooth', mf(57 + (pc + 3) % 12), t, .13, .06, { lp: 1700 }));
+      if (hs(n, seed) < .82) { const m = mel(n, seed, MINOR, 69, b === 0 ? c : null);
+        if (hs(n, seed + 1) < .28) { accord(out, m, t, sd * .48, .1, 2600); accord(out, mel(n + .5, seed, MINOR, 69), t + sd / 2, sd * .46, .1, 2600); } else accord(out, m, t, sd * .93, .1, 2600); }
+      return sd; } };
+  },
+  jazz(out, seed, bpm) { // до мажор, свинг
+    const sd = 60 / bpm / 2, ch = [[2, 5, 9, 0], [7, 11, 2, 5], [0, 4, 7, 11], [9, 1, 4, 7]], rt = [38, 43, 36, 45];
+    return { sd, step(t) {
+      const n = Math.round(t / sd), s = n % 8, bar = Math.floor(n / 8) % 4, c = ch[bar], tt = t + (s % 2 ? sd * .32 : 0);
+      if (s % 2 === 0) { const w = [0, (c[1] - c[0] + 12) % 12, 7, (rt[(bar + 1) % 4] - rt[bar] + 11 + 24) % 12][s / 2]; tone(out, 'triangle', mf(rt[bar] + w), t, sd * 1.7, .5, { decay: 1 }); hit(out, t, .07, .09, 6500); }
+      if (s === 3 || s === 7) hit(out, tt, .04, .05, 7000);
+      if (s === 2 || s === 6) hit(out, t, .09, .07, 2500);
+      if (hs(n, seed) < .52) { const m = mel(n, seed, MAJOR, 72, s % 4 === 0 ? c : null); tone(out, 'sine', mf(m), tt, .9, .2, { decay: 1 }); tone(out, 'sine', mf(m) * 4, tt, .25, .035, { decay: 1 }); }
+      if (s === 3 && hs(n, seed + 2) < .6) c.forEach(pc => piano(out, 60 + pc, tt, .3, .05));
+      return sd; } };
+  },
+  march(out, seed) { // фа мажор, две четверти
+    const sd = 60 / 116 / 2, ch = [[5, 9, 0], [5, 9, 0], [10, 2, 5], [0, 4, 7], [5, 9, 0], [10, 2, 5], [0, 4, 7], [5, 9, 0]], rt = [41, 41, 46, 48, 41, 46, 48, 41];
+    return { sd, step(t) {
+      const n = Math.round(t / sd), s = n % 4, bar = Math.floor(n / 4) % 8, c = ch[bar];
+      if (s % 2 === 0) { tone(out, 'sawtooth', mf(rt[bar] + (s ? 7 : 0) - 12), t, .2, .5, { lp: 320 }); if (!s) tone(out, 'sine', 62, t, .16, .6, { decay: 1 }); }
+      if (s !== 1) hit(out, t, .06, s === 2 ? .16 : .09, 1900);
+      if (hs(n, seed) < .74) { const m = mel(n, seed, MAJOR, 65, c), d = hs(n, seed + 3) < .4 ? sd * 1.9 : sd * .85; tone(out, 'sawtooth', mf(m), t, d, .15, { lp: 1500, att: .02 }); tone(out, 'sawtooth', mf(m - 12), t, d, .08, { lp: 900, att: .02 }); }
+      return sd; } };
+  },
+  piano(out, seed) { // ми минор, триоли
+    const sd = 60 / 70 / 3, ch = [[4, 7, 11], [0, 4, 7], [7, 11, 2], [11, 3, 6]], rt = [40, 36, 43, 35], th = [3, 4, 4, 4];
+    return { sd, step(t) {
+      const n = Math.round(t / sd), bar = Math.floor(n / 12) % 4, r = rt[bar], arp = [r, r + 7, r + 12, r + 12 + th[bar], r + 19, r + 12 + th[bar]];
+      piano(out, arp[n % 6], t, 1.4, .13);
+      if (n % 3 === 0 && hs(n, seed) < .78) piano(out, mel(n / 3, seed, MINOR, 76, ch[bar]), t, 2.2, .26);
+      return sd; } };
+  },
+  tango(out, seed) { // ре минор
+    const sd = 60 / 122 / 2, ch = [[2, 5, 9], [2, 5, 9], [7, 10, 2], [9, 1, 4]], rt = [38, 38, 43, 45];
+    return { sd, step(t) {
+      const n = Math.round(t / sd), s = n % 8, bar = Math.floor(n / 8) % 4, c = ch[bar];
+      if (s === 0 || s === 3 || s === 4 || s === 6) tone(out, 'triangle', mf(rt[bar] + (s === 3 ? 7 : 0)), t, .3, .5, { decay: 1 });
+      if (s % 2 === 0) c.forEach(pc => accord(out, 55 + (pc + 5) % 12, t, .09, .03, 2000));
+      if (s % 2 === 0 && hs(n, seed) < .7) tone(out, 'sawtooth', mf(mel(n / 2, seed, MINOR, 74, s === 0 ? c : null)), t, sd * 1.9, .13, { lp: 2400, att: .06, vib: 1 });
+      return sd; } };
+  },
+  voice(out, pitch, seed) { // «диктор»: пила через три полосовых фильтра – гласные без слов
+    const os = AC.createOscillator(), env = AC.createGain(); os.type = 'sawtooth'; os.frequency.value = pitch; env.gain.value = 0;
+    const F = [0, 1, 2].map(i => { const b = AC.createBiquadFilter(), g = AC.createGain(); b.type = 'bandpass'; b.Q.value = [6, 9, 10][i]; g.gain.value = [2.6, 1.7, .7][i]; os.connect(b); b.connect(g); g.connect(env); return b; });
+    env.connect(out); os.start();
+    const V = [[700, 1200, 2600], [450, 850, 2500], [320, 750, 2400], [280, 2250, 3000], [450, 1900, 2600], [320, 1500, 2400]]; let k = 0, left = 0, len = 8;
+    return { step(t) {
+      k++;
+      if (left <= 0) { len = left = 5 + Math.floor(hs(k, seed) * 9); env.gain.setTargetAtTime(0, t, .03); return .35 + hs(k, seed + 1) * .55; }
+      const v = V[Math.floor(hs(k, seed + 2) * 6)], d = .1 + hs(k, seed + 3) * .13;
+      F.forEach((b, i) => b.frequency.setTargetAtTime(v[i], t, .022));
+      os.frequency.setTargetAtTime(pitch * (.9 + .24 * left / len + .1 * (hs(k, seed + 4) - .5)), t, .04);
+      env.gain.setTargetAtTime(1, t, .012); env.gain.setTargetAtTime(hs(k, seed + 5) < .65 ? .06 : .55, t + d * .7, .014);
+      if (hs(k, seed + 6) < .4) hit(out, t + d * .78, .035, .1, 3800);
+      left--; return d; } };
+  },
+  pips(out) { // шесть сигналов, последний длинный
+    return { sd: 1, step(t) { const n = Math.round(t) % 12; if (n < 5) tone(out, 'sine', 1000, t, .1, .45); else if (n === 5) tone(out, 'sine', 1000, t, .56, .45); else hit(out, t, .03, .2, 2500); return 1; } };
+  },
+  morse(out) {
+    const M = { A: '.-', B: '-...', D: '-..', E: '.', F: '..-.', G: '--.', I: '..', L: '.-..', M: '--', N: '-.', U: '..-', 5: '.....', 2: '..---', ' ': ' ' };
+    const seq = []; 'FABLE 52  AI DA BUMAGIN   '.split('').forEach(c => { if (c === ' ') { seq.push([0, 4]); return; } M[c].split('').forEach(e => { seq.push([1, e === '.' ? 1 : 3]); seq.push([0, 1]); }); seq.push([0, 2]); });
+    let i = 0; const u = .068;
+    return { step(t) { const [on, l] = seq[i++ % seq.length]; if (on) tone(out, 'sine', 720, t, l * u, .4, { att: .004, rel: .004 }); return l * u; } };
+  },
+  tty(out) { // телетайп: две частоты, 45 бод
+    const os = AC.createOscillator(), g = AC.createGain(); os.type = 'square'; g.gain.value = .13; os.connect(g); g.connect(out); os.start(); let k = 0;
+    return { step(t) { k++; os.frequency.setValueAtTime(hs(k, 17) < .5 ? 1275 : 1445, t); return .022; } };
+  }
+};
+
+function initAudio() {
+  AC = new (window.AudioContext || window.webkitAudioContext)(); A = { buf: new Float32Array(512) };
+  const bus = AC.createGain(), hp = AC.createBiquadFilter(), lp = AC.createBiquadFilter(), pk = AC.createBiquadFilter(), ws = AC.createWaveShaper(), cu = new Float32Array(1024);
+  hp.type = 'highpass'; hp.frequency.value = 170; lp.type = 'lowpass'; lp.frequency.value = 3400; lp.Q.value = .6; pk.type = 'peaking'; pk.frequency.value = 1100; pk.gain.value = 5; pk.Q.value = .8;
+  for (let i = 0; i < 1024; i++) cu[i] = Math.tanh((i / 511.5 - 1) * 1.5); ws.curve = cu;
+  A.vol = AC.createGain(); A.vol.gain.value = 0; A.an = AC.createAnalyser(); A.an.fftSize = 512;
+  bus.connect(hp); hp.connect(lp); lp.connect(pk); pk.connect(ws); ws.connect(A.vol); A.vol.connect(A.an); A.an.connect(AC.destination);
+  A.nb = AC.createBuffer(1, AC.sampleRate * 3, AC.sampleRate); const d = A.nb.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const cb = AC.createBuffer(1, AC.sampleRate * 4, AC.sampleRate), c = cb.getChannelData(0); // треск: редкие щелчки
+  for (let i = 0; i < c.length; i++) if (Math.random() < .0006) { const a = (Math.random() * 2 - 1); for (let j = 0; j < 40 && i + j < c.length; j++) c[i + j] = a * Math.exp(-j / 8); }
+  const ns = AC.createBufferSource(), nf = AC.createBiquadFilter(); ns.buffer = A.nb; ns.loop = true; nf.type = 'bandpass'; nf.frequency.value = 1700; nf.Q.value = .35;
+  A.gS = AC.createGain(); A.gS.gain.value = 0; ns.connect(nf); nf.connect(A.gS); A.gS.connect(bus); ns.start();
+  const cs = AC.createBufferSource(); cs.buffer = cb; cs.loop = true; A.gC = AC.createGain(); A.gC.gain.value = 0; cs.connect(A.gC); A.gC.connect(bus); cs.start();
+  A.wh = AC.createOscillator(); A.gW = AC.createGain(); A.gW.gain.value = 0; A.wh.connect(A.gW); A.gW.connect(bus); A.wh.start();
+  A.gH = AC.createGain(); A.gH.gain.value = 0; [50, 100].forEach((f, i) => { const o = AC.createOscillator(), g = AC.createGain(); o.frequency.value = f; g.gain.value = i ? .5 : 1; o.connect(g); g.connect(A.gH); o.start(); }); A.gH.connect(A.vol);
+  ST.forEach(s => { s.g = AC.createGain(); s.g.gain.value = 0; s.g.connect(bus); s.gen = GEN[s.kind](s.g, ...s.p); s.next = 0; });
+  A.bus = bus; setInterval(sched, 40);
+}
+const LOUD = { voice: .62, morse: .55, tty: .5, pips: 1 }; // выравнивание громкости станций; музыка – 1.5
+function sched() {
+  const now = AC.currentTime, on = warm * warm; let best = 0, bs = null;
+  ST.forEach(s => {
+    const d = tune - s.pos; let k = s.band === band ? Math.exp(-(d * d) / (.016 * .016)) : 0;
+    if (k > best) { best = k; bs = s; }
+    if (s.fade) k *= .6 + .4 * Math.sin(now * .7 + s.pos * 40) * Math.sin(now * .23 + s.pos * 9);
+    s.g.gain.setTargetAtTime(k * on * (LOUD[s.kind] || 1.5), now, .03);
+    if (k > .004 && on > .01) {
+      if (s.next < now + .02) s.next = s.gen.sd ? Math.ceil((now + .03) / s.gen.sd) * s.gen.sd : now + .03;
+      while (s.next < now + .22) s.next += s.gen.step(s.next);
+    }
+  });
+  sig = best; near = bs;
+  let wd = 1, wn = null; ST.forEach(s => { if (s.band === band && Math.abs(tune - s.pos) < wd) { wd = Math.abs(tune - s.pos); wn = s; } });
+  A.wh.frequency.setTargetAtTime(120 + wd * 42000, now, .02); // свист биений рядом со станцией
+  A.gW.gain.setTargetAtTime(on * .05 * Math.exp(-(wd * wd) / (.032 * .032)) * (1 - Math.exp(-(wd * wd) / (.007 * .007))), now, .03);
+  A.gS.gain.setTargetAtTime(on * (.3 - .27 * best) * (band === 2 ? 1.2 : 1), now, .05);
+  A.gC.gain.setTargetAtTime(on * (.6 - .5 * best), now, .05);
+  A.gH.gain.setTargetAtTime(power ? .012 * Math.min(1, warmT) : 0, now, .1);
+  A.vol.gain.setTargetAtTime(power ? vol * vol * 1.5 : 0, now, .05);
+}
+function click(v = .3) { if (!AC) return; const t = AC.currentTime; hit(A.vol, t, .03, v, 900); tone(A.vol, 'sine', 140, t, .05, v * .6, { decay: 1 }); }
+function setPower(p) { if (!AC) initAudio(); if (AC.state === 'suspended') AC.resume(); power = p; click(.4); }
+function setBand(b) { if (b === band) return; band = b; click(.3); if (AC && power) hit(A.bus, AC.currentTime, .25, .5, 500); }
+
+// ---------- Управление ----------
+let drag = null;
+const vp = e => ({ x: (e.clientX * DPR - OX) / S, y: (e.clientY * DPR - OY) / S });
+const inK = (p, k) => Math.hypot(p.x - k.x, p.y - k.y) < k.r + 6;
+function pick(p) {
+  if (inK(p, KNOB_T)) return 'tune'; if (inK(p, KNOB_V)) return 'vol';
+  const k = KEYS.findIndex(k => p.x > k.x && p.x < k.x + k.w && p.y > k.y && p.y < k.y + k.h + 8); if (k >= 0) return 'key' + k;
+  if (p.x > DIAL.x && p.x < DIAL.x + DIAL.w && p.y > DIAL.y && p.y < DIAL.y + DIAL.h) return 'dial';
+  return null;
+}
+cv.addEventListener('pointerdown', e => {
+  const p = vp(e), h = pick(p); if (!h) return;
+  if (h.startsWith('key')) { const i = +h[3]; i ? setBand(i - 1) : setPower(!power); return; }
+  if (h === 'dial') { tuneTo = clamp((p.x - SX0) / (SX1 - SX0), 0, 1); const r = ROWY.findIndex(y => Math.abs(p.y - y + 6) < 31); if (r >= 0) setBand(r); return; }
+  drag = { h, x: e.clientX, y: e.clientY }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing';
+});
+cv.addEventListener('pointermove', e => {
+  if (!drag) { const h = pick(vp(e)); cv.style.cursor = h === 'tune' || h === 'vol' ? 'grab' : h ? 'pointer' : 'default'; return; }
+  const d = (e.clientX - drag.x) - (e.clientY - drag.y); drag.x = e.clientX; drag.y = e.clientY;
+  if (drag.h === 'tune') tuneTo = clamp(tuneTo + d * .0011, 0, 1); else vol = clamp(vol + d * .004, 0, 1);
+});
+addEventListener('pointerup', () => { drag = null; cv.style.cursor = 'default'; });
+cv.addEventListener('wheel', e => { e.preventDefault(); tuneTo = clamp(tuneTo + (e.deltaY + e.deltaX) * .00018, 0, 1); }, { passive: false });
+addEventListener('keydown', e => {
+  if (e.code === 'Space') { e.preventDefault(); setPower(!power); }
+  else if (e.key === 'ArrowLeft') tuneTo = clamp(tuneTo - (e.shiftKey ? .02 : .003), 0, 1);
+  else if (e.key === 'ArrowRight') tuneTo = clamp(tuneTo + (e.shiftKey ? .02 : .003), 0, 1);
+  else if (e.key === 'ArrowUp') vol = clamp(vol + .05, 0, 1);
+  else if (e.key === 'ArrowDown') vol = clamp(vol - .05, 0, 1);
+  else if ('123'.includes(e.key)) setBand(+e.key - 1);
+});
+addEventListener('resize', build);
+build(); requestAnimationFrame(frame);
+</script>
+</body>
+</html>

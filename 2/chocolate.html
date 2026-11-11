@@ -1,0 +1,293 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Шоколад «Плитка» · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--acc:#ffd84d;--line:rgba(242,238,227,.3);--dim:rgba(242,238,227,.62)}
+*{box-sizing:border-box}
+html,body{margin:0;background:var(--bg);color:var(--ink);
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+.hero{position:relative;height:100vh;min-height:520px;overflow:hidden;user-select:none;-webkit-user-select:none}
+canvas{position:absolute;inset:0;width:100%;height:100%;display:block;touch-action:pan-y;cursor:grab}
+.hud{position:absolute;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.7)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;max-width:54ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(12,12,11,.6);color:var(--ink);padding:9px 14px;border-radius:999px;text-shadow:none;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.7)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:absolute;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;pointer-events:none}
+.bar>*{pointer-events:auto}
+.sep{width:1px;height:22px;background:var(--line);margin:0 6px}
+.stat{font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px;text-shadow:0 1px 10px rgba(0,0,0,.9)}
+.cap{position:absolute;z-index:4;left:50%;bottom:78px;transform:translateX(-50%);pointer-events:none;font:500 23px/1.25 Charter,"Iowan Old Style","PT Serif",Georgia,serif;color:#fff3d2;text-align:center;
+  text-shadow:0 2px 14px rgba(0,0,0,.95);max-width:90vw;transition:opacity .5s}
+.more{position:absolute;z-index:5;right:28px;bottom:26px;font-size:13.5px;color:var(--dim);text-decoration:none}
+.err{position:absolute;inset:0;display:none;align-items:center;justify-content:center;padding:40px;text-align:center}
+main{max-width:1080px;margin:0 auto;padding:0 28px 140px}
+section{padding-top:104px}
+h2{font:500 46px/1.08 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.015em;margin:0 0 30px}
+.kick{font:600 12px/1 -apple-system,Helvetica,Arial,sans-serif;letter-spacing:.14em;text-transform:uppercase;color:var(--acc);margin-bottom:18px}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:64px;align-items:start}
+.lead{font-size:18px;color:var(--dim);max-width:44ch;margin:0}
+.ing{list-style:none;margin:0;padding:0}
+.ing li{display:flex;justify-content:space-between;gap:20px;padding:15px 0;border-bottom:1px solid var(--line);font-size:16.5px}
+.ing li span:last-child{font:15px ui-monospace,"SF Mono",Menlo,monospace;color:var(--dim)}
+.cards{display:grid;grid-template-columns:repeat(3,1fr);gap:18px}
+.card{border:1px solid var(--line);border-radius:18px;padding:20px;cursor:pointer;background:#131110;color:inherit;font:inherit;text-align:left;transition:border-color .2s,transform .2s}
+.card:hover{transform:translateY(-3px)}
+.card.on{border-color:var(--acc)}
+.card svg{width:100%;height:auto;display:block;border-radius:11px;margin-bottom:18px}
+.card h3{font:500 24px/1.15 Charter,"Iowan Old Style","PT Serif",Georgia,serif;margin:0 0 8px}
+.card p{margin:0;color:var(--dim)}
+.card i{display:block;margin-top:14px;font-style:normal;font-size:13px;color:var(--acc);visibility:hidden}
+.card.on i{visibility:visible}
+.price{display:flex;align-items:flex-end;gap:36px;flex-wrap:wrap}
+.price b{font:500 120px/.9 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.03em}
+.buy{border:0;background:var(--acc);color:#14130f;font-size:16px;font-weight:600;line-height:1;font-family:inherit;padding:18px 28px;border-radius:999px;cursor:pointer}
+.foot{margin-top:90px;color:var(--dim);font-size:13.5px;border-top:1px solid var(--line);padding-top:22px}
+@media (max-width:820px){.two,.cards{grid-template-columns:1fr}.hud p{display:none}.price b{font-size:84px}}
+</style>
+</head>
+<body>
+<div class="hero" id="hero">
+  <canvas id="c"></canvas>
+  <div class="hud">
+    <div>
+      <h1>Шоколад «Плитка»</h1>
+      <p>Страница шоколада, которого не существует. Потяни обёртку вправо. Нажми на бороздку – плитка сломается со щелчком. Задержи курсор – подтает. Одинокую дольку можно съесть.</p>
+    </div>
+    <nav class="nav"><a href="lamplighter.html">← Назад</a><a href="index.html">Все демо</a><a href="rocket.html">Дальше →</a></nav>
+  </div>
+  <div class="cap" id="cap">Потяни обёртку вправо</div>
+  <div class="bar">
+    <button class="pill" id="wrap">Развернуть</button><span class="sep"></span>
+    <button class="pill on" data-v="dark">Тёмный</button><button class="pill" data-v="milk">Молочный</button><button class="pill" data-v="white">Белый</button><span class="sep"></span>
+    <button class="pill on" id="warm">Тёплый курсор</button><button class="pill on" id="snd">Звук</button>
+    <span class="stat" id="stat"></span>
+  </div>
+  <a class="more" href="#inside">состав, начинки и цена ↓</a>
+  <div class="err" id="err">Этому демо нужен WebGL 2. Откройте его в свежем Chrome или Safari.</div>
+</div>
+<main>
+  <section id="inside">
+    <div class="kick">Что внутри</div>
+    <div class="two">
+      <div><h2>Четыре ингредиента и ни одного настоящего грамма.</h2>
+        <p class="lead">Какао выдумано, сахар посчитан, соль нарисована. Зато блеск, тень и излом честные: их считает видеокарта, шестьдесят раз в секунду.</p></div>
+      <ul class="ing">
+        <li><span>Какао тёртое с плантации, которой нет на карте</span><span id="pct">72 %</span></li>
+        <li><span>Какао-масло</span><span>18 %</span></li>
+        <li><span>Тростниковый сахар</span><span>9,6 %</span></li>
+        <li><span>Морская соль</span><span>0,4 %</span></li>
+        <li><span>Картинки, библиотеки, фотосъёмка</span><span>0 %</span></li>
+      </ul>
+    </div>
+  </section>
+  <section>
+    <div class="kick">Начинки</div>
+    <h2>Выбери, что покажется на изломе.</h2>
+    <div class="cards" id="cards">
+      <button class="card on" data-f="caramel">
+        <svg viewBox="0 0 300 150"><rect width="300" height="150" fill="#1c1713"/><path d="M40 122 L52 50 Q54 34 70 34 L230 34 Q246 34 248 50 L260 122 Z" fill="#3b1d10"/><path d="M66 110 L74 62 Q75 54 84 54 L216 54 Q225 54 226 62 L234 110 Z" fill="#d58a22"/><path d="M226 80 Q262 84 268 112 Q270 130 258 130 Q250 130 252 114 Q250 96 228 96 Z" fill="#e39b2c"/><path d="M84 62 Q150 54 214 62" stroke="#f7c765" stroke-width="5" fill="none" stroke-linecap="round" opacity=".7"/></svg>
+        <h3>Солёная карамель</h3><p>Тянется и не рвётся. Щепотка соли, чтобы сладкое не скучало.</p><i>● на изломе сейчас</i></button>
+      <button class="card" data-f="nut">
+        <svg viewBox="0 0 300 150"><rect width="300" height="150" fill="#1c1713"/><path d="M40 122 L52 50 Q54 34 70 34 L230 34 Q246 34 248 50 L260 122 Z" fill="#3b1d10"/><path d="M66 110 L74 62 Q75 54 84 54 L216 54 Q225 54 226 62 L234 110 Z" fill="#8a5a30"/><circle cx="118" cy="82" r="22" fill="#d9b58a"/><circle cx="118" cy="82" r="9" fill="#f0dcc0"/><circle cx="184" cy="82" r="22" fill="#d9b58a"/><circle cx="184" cy="82" r="9" fill="#f0dcc0"/></svg>
+        <h3>Цельный фундук</h3><p>Обжарен до хруста. По ореху на дольку, без исключений.</p><i>● на изломе сейчас</i></button>
+      <button class="card" data-f="berry">
+        <svg viewBox="0 0 300 150"><rect width="300" height="150" fill="#1c1713"/><path d="M40 122 L52 50 Q54 34 70 34 L230 34 Q246 34 248 50 L260 122 Z" fill="#3b1d10"/><path d="M66 110 L74 62 Q75 54 84 54 L216 54 Q225 54 226 62 L234 110 Z" fill="#b01a3a"/><g fill="#f2b6c0"><circle cx="96" cy="74" r="3"/><circle cx="126" cy="94" r="3"/><circle cx="152" cy="70" r="3"/><circle cx="178" cy="92" r="3"/><circle cx="204" cy="76" r="3"/><circle cx="110" cy="98" r="2.4"/><circle cx="196" cy="100" r="2.4"/></g></svg>
+        <h3>Малина</h3><p>Кислинка, чтобы тёмный шоколад не казался строгим.</p><i>● на изломе сейчас</i></button>
+    </div>
+  </section>
+  <section>
+    <div class="kick">Цена</div>
+    <div class="price"><b>0 ₽</b>
+      <div><p class="lead" style="margin-bottom:22px">Плитки не существует. Её придумала, нарисовала и запрограммировала Fable 5.2 – одним файлом, без единой картинки. Вес нетто: 90 воображаемых граммов.</p>
+      <button class="buy" id="buy">Положить в корзину</button></div></div>
+    <div class="foot">Демо из серии «Вещи, которые хочется потрогать». Товар вымышленный, заказать его нельзя.</div>
+  </section>
+</main>
+<script>
+'use strict';
+const $ = id => document.getElementById(id), cv = $('c'), gl = cv.getContext('webgl2', { antialias: false, alpha: false });
+if (!gl) $('err').style.display = 'flex';
+else (function () {
+const VS = `#version 300 es
+void main(){ gl_Position=vec4(vec2(gl_VertexID&1, gl_VertexID>>1)*4.-1., 0., 1.); }`;
+const FS = `#version 300 es
+precision highp float;
+out vec4 o;
+uniform vec2 uRes, uOff, uMouse; uniform float uT, uZoom, uU, uWarm;
+uniform vec4 uSeg[24], uSegB[24], uBar; uniform vec3 uCol, uFill;
+uniform sampler2D uMelt, uLabel;
+const float HS=.085;
+float h21(vec2 p){ p=fract(p*vec2(123.34,456.21)); p+=dot(p,p+45.32); return fract(p.x*p.y); }
+float vn(vec2 p){ vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f); return mix(mix(h21(i),h21(i+vec2(1,0)),f.x), mix(h21(i+vec2(0,1)),h21(i+1.),f.x), f.y); }
+float melt(vec2 q){ return smoothstep(.12,.85,texture(uMelt, q*vec2(.25,.4)+.5).r); }
+// одна долька: тонкое основание и подушечка со звездой
+float segH(vec2 a){ vec2 d2=a-vec2(.064); float dP=length(max(d2,0.))+min(max(d2.x,d2.y),0.)-.022;
+  float pil=smoothstep(0.,-.03,dP); pil=pil*(2.-pil); float h=.34+.5*pil;
+  h-=.035*smoothstep(.0035,0.,abs(dP+.04));
+  h-=.07*smoothstep(.2,.185, pow(a.x+1e-4,.55)+pow(a.y+1e-4,.55));
+  return h; }
+float H(vec2 q, out int id, out vec2 lc){ id=-1; lc=vec2(0);
+  for(int i=0;i<24;i++){ vec4 s=uSeg[i]; vec2 l=q-s.xy; if(abs(l.x)>.15||abs(l.y)>.15) continue; l=vec2(l.x*s.z+l.y*s.w, -l.x*s.w+l.y*s.z);
+    if(abs(l.x)<.1&&abs(l.y)<.1){ id=i; lc=l; return mix(segH(abs(l)), .54+.12*vn(q*6.), melt(q)*.92); } }
+  return 0.; }
+float cr(vec2 p){ return abs(vn(p*13.)-.5)*1.2+abs(vn(p*29.+7.)-.5)*.6+vn(p*70.)*.1; }
+vec3 table(vec2 q){ float n=vn(q*3.)*.5+vn(q*9.+3.)*.3+vn(q*45.)*.2; vec3 c=mix(vec3(.04,.037,.035), vec3(.1,.094,.087), n);
+  c*=.9+.2*vn(q*vec2(2.,38.)+9.); c+=step(.993,h21(floor(q*240.)))*.05;
+  return c*max(.25, 1.3-.5*length(q-vec2(-.55,.5))); }
+void main(){
+  vec2 q=(gl_FragCoord.xy*2.-uRes)/uRes.y/uZoom+uOff; float e=3./uRes.y/uZoom;
+  vec3 Lk=normalize(vec3(-.45,.55,.7)), Vv=vec3(0,0,1), Hh=normalize(Lk+Vv);
+  vec2 bq=q-uBar.xy; bq=vec2(bq.x*uBar.z+bq.y*uBar.w, -bq.x*uBar.w+bq.y*uBar.z);
+  float A=clamp(uU/.45,0.,1.), slide=2.9*A*A, B=mix(-.76,.8,clamp((uU-.45)/.55,0.,1.));
+  bool wrapped=uU<.999;
+  // стол и тень
+  vec3 col=table(q); float sh=0.; vec2 qs=q-vec2(.024,-.032);
+  for(int i=0;i<24;i++){ vec4 s=uSeg[i]; vec2 l=qs-s.xy; if(abs(l.x)>.2||abs(l.y)>.2) continue; l=vec2(l.x*s.z+l.y*s.w, -l.x*s.w+l.y*s.z); vec2 d=abs(l)-.1; sh=max(sh, smoothstep(.04,-.012, length(max(d,0.))+min(max(d.x,d.y),0.))); }
+  if(A<1.){ vec2 bs=qs-uBar.xy; bs=vec2(bs.x*uBar.z+bs.y*uBar.w, -bs.x*uBar.w+bs.y*uBar.z); vec2 d=abs(vec2(bs.x-slide,bs.y))-vec2(.41,.418); sh=max(sh, smoothstep(.04,-.012, length(max(d,0.))+min(max(d.x,d.y),0.))); }
+  col*=1.-.62*sh;
+  // шоколад: высота, нормаль, свет
+  int id, i2; vec2 lc, l2; float h=H(q,id,lc), hx=H(q+vec2(e,0),i2,l2), hy=H(q+vec2(0,e),i2,l2);
+  if(id>=0){ float m=melt(q); vec3 N=normalize(vec3((h-hx)*HS/e, (h-hy)*HS/e, 1.));
+    N=normalize(N+vec3(vn(q*120.)-.5, vn(q*120.+5.)-.5, 0.)*.035*(1.-m));
+    float diff=max(dot(N,Lk),0.), sp=pow(max(dot(N,Hh),0.), mix(70.,240.,m)), sp2=pow(max(dot(N,normalize(vec3(.55,.25,.8))),0.),24.);
+    float ao=mix(.5,1.,smoothstep(.3,.62,h)); vec3 alb=uCol*(.9+.2*vn(q*46.)*(1.-m))*(1.-.3*m);
+    float nz=(vn(q*150.)-.5)*.012; vec4 Bf=uSegB[id];
+    float be=max(max(Bf.x*smoothstep(.079,.095,lc.x+nz), Bf.y*smoothstep(.079,.095,-lc.x+nz)), max(Bf.z*smoothstep(.079,.095,lc.y+nz), Bf.w*smoothstep(.079,.095,-lc.y+nz)));
+    alb=mix(alb, uFill*(.75+.5*vn(q*90.)), be*.92);
+    vec3 cc=alb*(.2+1.0*diff)*ao + vec3(1.,.94,.86)*(sp*mix(.55,.8,m)+sp2*.05) + alb*vec3(1.6,.8,.4)*.22*pow(1.-N.z,2.);
+    vec3 R=reflect(-Vv,N); float band=smoothstep(.36,0.,abs(R.x*.8+R.y*.6+(q.x*.5-q.y*.35)*.55-.1));
+    cc+=vec3(1.,.95,.88)*(band*band*(.06+.07*m)+pow(max(dot(N,normalize(vec3(-.07,.09,1.))),0.),500.)*m*.55)*(1.-be);
+    col=mix(col, cc, smoothstep(0.,e*.6, .1-max(abs(lc.x),abs(lc.y)))); }
+  // фольга и бумажная лента
+  if(wrapped){ vec2 fb=abs(bq)-vec2(.612,.412); float dF=max(fb.x,fb.y), sC=bq.x*.92+bq.y*.39;
+    if(dF<0.){
+      if(sC>B){ float ed=smoothstep(0.,-.03,dF), fh=h*.75*ed+cr(bq)*.15, fx=hx*.75*ed+cr(bq+vec2(e,0))*.15, fy=hy*.75*ed+cr(bq+vec2(0,e))*.15;
+        vec3 N=normalize(vec3((fh-fx)*HS/e, (fh-fy)*HS/e, 1.)), R=reflect(-Vv,N); float rl=max(dot(R,Lk),0.);
+        col=vec3(1.,.74,.3)*(pow(rl,5.)*1.9+.16+.3*smoothstep(-.3,.7,R.y))*.6+vec3(1.,.95,.8)*pow(rl,36.)*.9;
+        float t=(sC-B)/.07; if(t<1.){ N=normalize(vec3(vec2(.92,.39)*cos(t*3.1416)*1.4, .6)); R=reflect(-Vv,N); col=vec3(.8,.82,.87)*(pow(max(dot(R,Lk),0.),4.)*1.5+.3); }
+      } else col*=1.-.55*smoothstep(.09,0.,B-sC); }
+    float px0=bq.x-slide;
+    if(A<1.&&abs(px0)<.41&&abs(bq.y)<.418){ vec3 lab=pow(texture(uLabel, vec2(px0/.41, bq.y/.418)*.5+.5).rgb, vec3(2.2));
+      float sl=sign(bq.y)*smoothstep(.375,.418,abs(bq.y)); vec3 N=normalize(vec3(0.,sl*1.3,1.));
+      float on=smoothstep(.66,.56,bq.x)*step(0.,-dF);
+      col=lab*(.26+.92*max(dot(N,Lk),0.))*(1.-vn(bq*vec2(260.,36.))*.07-vn(bq*80.)*.05)*(.955+.08*on*smoothstep(.3,.84,h))*(.86+.14*smoothstep(.41,.385,abs(px0))); } }
+  col+=vec3(1.,.4,.1)*uWarm*.1*exp(-dot(q-uMouse,q-uMouse)*26.);
+  col*=1.-.25*dot(q*.5,q*.5);
+  col=col/(1.+col*.25); o=vec4(pow(max(col,0.), vec3(.4545)), 1.);
+}`;
+const mk = (t, s) => { const o = gl.createShader(t); gl.shaderSource(o, s); gl.compileShader(o); if (!gl.getShaderParameter(o, gl.COMPILE_STATUS)) throw new Error(gl.getShaderInfoLog(o)); return o; };
+const pr = gl.createProgram(); gl.attachShader(pr, mk(gl.VERTEX_SHADER, VS)); gl.attachShader(pr, mk(gl.FRAGMENT_SHADER, FS)); gl.linkProgram(pr); if (!gl.getProgramParameter(pr, gl.LINK_STATUS)) throw new Error(gl.getProgramInfoLog(pr));
+gl.useProgram(pr); const U = {}; for (const n of ['uRes', 'uOff', 'uMouse', 'uT', 'uZoom', 'uU', 'uWarm', 'uSeg', 'uSegB', 'uBar', 'uCol', 'uFill', 'uMelt', 'uLabel']) U[n] = gl.getUniformLocation(pr, n);
+gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+function tex(unit) { const t = gl.createTexture(); gl.activeTexture(gl.TEXTURE0 + unit); gl.bindTexture(gl.TEXTURE_2D, t); for (const [k, v] of [[gl.TEXTURE_MIN_FILTER, gl.LINEAR], [gl.TEXTURE_MAG_FILTER, gl.LINEAR], [gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE], [gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE]]) gl.texParameteri(gl.TEXTURE_2D, k, v); return t; }
+const tMelt = tex(0), tLabel = tex(1); gl.uniform1i(U.uMelt, 0); gl.uniform1i(U.uLabel, 1);
+const mc = document.createElement('canvas'); mc.width = 256; mc.height = 160; const mg = mc.getContext('2d', { willReadFrequently: false });
+const lab = document.createElement('canvas'); lab.width = 800; lab.height = 820;
+
+// ---------- Плитка: 6 × 4 дольки, куски после разлома живут группами ----------
+const NX = 6, NY = 4, P = .2, OFF = [0, .05];
+const VARS = { dark: { name: 'тёмный', pct: '72 % какао', col: [.062, .026, .015], paper: '#efe5cf', ink: '#3a1c10' }, milk: { name: 'молочный', pct: '38 % какао', col: [.3, .15, .085], paper: '#f3e3c6', ink: '#6a3a1c' }, white: { name: 'белый', pct: 'с ванилью', col: [.74, .62, .44], paper: '#2e211a', ink: '#f0dfc0' } };
+const FILLS = { caramel: { label: 'с солёной карамелью', col: [.8, .45, .12] }, nut: { label: 'с цельным фундуком', col: [.62, .44, .26] }, berry: { label: 'с малиной', col: [.68, .07, .17] } };
+const st = { u: 0, uT: 0, variant: 'dark', fill: 'caramel', warm: true, snaps: 0, zoom: 1, asp: 1.6, mouse: [9, 9], over: false };
+let groups = [], segG = new Array(24).fill(null), drag = null;
+const cellPos = i => [(i % NX - 2.5) * P, (1.5 - Math.floor(i / NX)) * P];
+function newBar() { const g = { cells: [...Array(24).keys()], pos: [0, 0], rot: -.07, vel: [0, 0], w: 0, c0: [0, 0] }; groups = [g]; segG.fill(g); st.u = st.uT = 0; st.snaps = 0; mg.fillStyle = '#000'; mg.fillRect(0, 0, 256, 160); drawLabel(); $('cap').textContent = 'Потяни обёртку вправо'; $('cap').style.opacity = 1; }
+function pose(i) { const g = segG[i]; if (!g) return [99, 99, 1, 0]; const [cx, cy] = cellPos(i), lx = cx - g.c0[0], ly = cy - g.c0[1], c = Math.cos(g.rot), s = Math.sin(g.rot); return [g.pos[0] + lx * c - ly * s, g.pos[1] + lx * s + ly * c, c, s]; }
+function pick(p) { for (let i = 0; i < 24; i++) { const [x, y, c, s] = pose(i), dx = p[0] - x, dy = p[1] - y, lx = dx * c + dy * s, ly = -dx * s + dy * c; if (Math.abs(lx) < .1 && Math.abs(ly) < .1) return { i, lx, ly }; } return null; }
+function flags(i) { const g = segG[i], ci = i % NX, cj = Math.floor(i / NX), f = (di, dj) => { const a = ci + di, b = cj + dj; return a < 0 || a >= NX || b < 0 || b >= NY ? 0 : segG[b * NX + a] !== g ? 1 : 0; }; return g ? [f(1, 0), f(-1, 0), f(0, -1), f(0, 1)] : [0, 0, 0, 0]; }
+function snap(i, lx, ly) { const g = segG[i];
+  if (g.cells.length === 1) { groups.splice(groups.indexOf(g), 1); segG[i] = null; snd.crunch(); return; }
+  const ci = i % NX, cj = Math.floor(i / NX), is = g.cells.map(k => k % NX), js = g.cells.map(k => Math.floor(k / NX)), i0 = Math.min(...is), i1 = Math.max(...is), j0 = Math.min(...js), j1 = Math.max(...js);
+  let cvt = -1, dv = 9, cht = -1, dh = 9;
+  if (i1 > i0) { cvt = lx >= 0 ? ci : ci - 1; dv = .1 - Math.abs(lx); if (cvt < i0) { cvt = i0; dv = .1 + Math.abs(lx); } if (cvt >= i1) { cvt = i1 - 1; dv = .1 + Math.abs(lx); } }
+  if (j1 > j0) { cht = ly >= 0 ? cj - 1 : cj; dh = .1 - Math.abs(ly); if (cht < j0) { cht = j0; dh = .1 + Math.abs(ly); } if (cht >= j1) { cht = j1 - 1; dh = .1 + Math.abs(ly); } }
+  const vert = dv <= dh, A = [], B = []; for (const k of g.cells) ((vert ? k % NX <= cvt : Math.floor(k / NX) <= cht) ? A : B).push(k);
+  const mov = A.length < B.length ? A : B.length < A.length ? B : A.includes(i) ? A : B, stay = mov === A ? B : A;
+  const mkg = cells => { const c0 = [0, 0]; cells.forEach(k => { const p = cellPos(k); c0[0] += p[0] / cells.length; c0[1] += p[1] / cells.length; }); const c = Math.cos(g.rot), s = Math.sin(g.rot), dx = c0[0] - g.c0[0], dy = c0[1] - g.c0[1]; return { cells, c0, pos: [g.pos[0] + dx * c - dy * s, g.pos[1] + dx * s + dy * c], rot: g.rot, vel: [0, 0], w: 0 }; };
+  const gm = mkg(mov), gs = mkg(stay); let dx = gm.pos[0] - gs.pos[0], dy = gm.pos[1] - gs.pos[1]; const dl = Math.hypot(dx, dy) || 1, k = .55 + .5 * Math.min(1, 3 / mov.length); dx /= dl; dy /= dl;
+  gm.vel = [dx * k, dy * k]; gm.w = (Math.random() - .5) * 1.5; gs.vel = [-dx * .22, -dy * .22]; gs.w = -gm.w * .15;
+  groups.splice(groups.indexOf(g), 1, gs, gm); mov.forEach(q => segG[q] = gm); stay.forEach(q => segG[q] = gs); st.snaps++; snd.snap(); $('cap').style.opacity = 0; }
+
+// ---------- Этикетка: рисуется на холсте и становится текстурой ----------
+function spaced(c, t, x, y, sp) { let w = 0; for (const ch of t) w += c.measureText(ch).width + sp; let xx = x - (w - sp) / 2; c.textAlign = 'left'; for (const ch of t) { c.fillText(ch, xx, y); xx += c.measureText(ch).width + sp; } c.textAlign = 'center'; }
+function drawLabel() { const c = lab.getContext('2d'), v = VARS[st.variant], W = 800, Hh = 820; let r = 5; const rnd = () => (r = r * 16807 % 2147483647) / 2147483647;
+  c.fillStyle = v.paper; c.fillRect(0, 0, W, Hh); for (let i = 0; i < 1500; i++) { c.fillStyle = `rgba(120,80,40,${rnd() * .06})`; c.fillRect(rnd() * W, rnd() * Hh, 2 + rnd() * 16, 1); }
+  c.strokeStyle = c.fillStyle = v.ink; c.lineWidth = 4; c.strokeRect(36, 36, W - 72, Hh - 72); c.lineWidth = 1.5; c.strokeRect(50, 50, W - 100, Hh - 100);
+  for (let j = 0; j < 4; j++) for (let i = 0; i < 6; i++) { c.beginPath(); c.roundRect ? c.roundRect(400 - 105 + i * 35 + 3, 104 + j * 35 + 3, 29, 29, 6) : c.rect(400 - 105 + i * 35 + 3, 104 + j * 35 + 3, 29, 29); c.fill(); }
+  c.textAlign = 'center'; c.font = '700 128px Charter,"Iowan Old Style","PT Serif",Georgia,serif'; spaced(c, 'ПЛИТКА', 400, 408, 12);
+  c.font = '600 25px -apple-system,Helvetica,Arial,sans-serif'; spaced(c, 'ШОКОЛАД, КОТОРОГО НЕТ', 400, 462, 6); c.fillRect(280, 500, 240, 3);
+  c.font = 'italic 500 46px Charter,"Iowan Old Style","PT Serif",Georgia,serif'; c.fillText(`${v.name} · ${v.pct}`, 400, 580);
+  c.font = '500 33px -apple-system,Helvetica,Arial,sans-serif'; c.fillText(FILLS[st.fill].label, 400, 636);
+  c.font = '600 28px ui-monospace,"SF Mono",Menlo,monospace'; spaced(c, '90 Г · FABLE 5.2', 400, 730, 4);
+  gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, tLabel); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, lab); }
+
+// ---------- Звук ----------
+let ac, out, nbuf, rG, rF, sndOn = true;
+function audio() { if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)(); out = ac.createGain(); out.gain.value = sndOn ? .8 : 0; out.connect(ac.destination);
+  nbuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate); const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  const s = ac.createBufferSource(); s.buffer = nbuf; s.loop = true; rF = ac.createBiquadFilter(); rF.type = 'bandpass'; rF.Q.value = .8; rG = ac.createGain(); rG.gain.value = 0; s.connect(rF); rF.connect(rG); rG.connect(out); s.start(); }
+function hit(freq, q, dur, vol, delay = 0, type = 'bandpass') { if (!ac) return; const t = ac.currentTime + delay, s = ac.createBufferSource(), f = ac.createBiquadFilter(), g = ac.createGain(); s.buffer = nbuf; f.type = type; f.frequency.value = freq; f.Q.value = q;
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0008, t + dur); s.connect(f); f.connect(g); g.connect(out); s.start(t, Math.random() * .8, dur + .02); }
+function tone(f1, dur, vol, type, f2) { if (!ac) return; const t = ac.currentTime, o = ac.createOscillator(), g = ac.createGain(); o.type = type; o.frequency.setValueAtTime(f1, t); o.frequency.exponentialRampToValueAtTime(f2, t + dur);
+  g.gain.setValueAtTime(vol, t); g.gain.exponentialRampToValueAtTime(.0006, t + dur); o.connect(g); g.connect(out); o.start(t); o.stop(t + dur + .02); }
+const snd = { snap() { hit(2700, 1.1, .03, .7); hit(5200, 2, .015, .4); tone(1700, .025, .25, 'square', 600); tone(180, .07, .45, 'sine', 85); },
+  crunch() { for (let k = 0; k < 5; k++) hit(1100 + Math.random() * 1500, .9, .05, .4, k * .055 + Math.random() * .02); tone(140, .12, .3, 'sine', 70); } };
+
+// ---------- Мышь ----------
+function toTable(e) { const r = cv.getBoundingClientRect(); return [((e.clientX - r.left) / r.width * 2 - 1) * (r.width / r.height) / st.zoom + OFF[0], (1 - (e.clientY - r.top) / r.height * 2) / st.zoom + OFF[1]]; }
+cv.addEventListener('pointerdown', e => { audio(); const p = toTable(e); st.mouse = p;
+  if (st.u < 1) { if (Math.abs(p[0]) < .8 && Math.abs(p[1]) < .55) { drag = { wrap: true, x0: p[0], u0: st.u, moved: 0 }; cv.setPointerCapture(e.pointerId); } return; }
+  const h = pick(p); if (!h) return; const g = segG[h.i]; drag = { g, h, off: [p[0] - g.pos[0], p[1] - g.pos[1]], p0: p, moved: 0 }; cv.setPointerCapture(e.pointerId); cv.style.cursor = 'grabbing'; e.preventDefault(); });
+cv.addEventListener('pointermove', e => { const p = toTable(e); st.mouse = p; st.over = true; if (!drag) return;
+  if (drag.wrap) { drag.moved = Math.max(drag.moved, Math.abs(p[0] - drag.x0)); st.uT = Math.max(0, Math.min(1, drag.u0 + (p[0] - drag.x0) / 1.25)); return; }
+  drag.moved = Math.max(drag.moved, Math.hypot(p[0] - drag.p0[0], p[1] - drag.p0[1])); if (drag.moved > .012) { drag.g.pos = [p[0] - drag.off[0], p[1] - drag.off[1]]; drag.g.vel = [0, 0]; drag.g.w = 0; } });
+const drop = () => { if (!drag) return; if (drag.wrap) st.uT = drag.moved < .012 || st.uT > .2 ? 1 : 0; else if (drag.moved <= .012) snap(drag.h.i, drag.h.lx, drag.h.ly); drag = null; cv.style.cursor = 'grab'; };
+cv.addEventListener('pointerup', drop); cv.addEventListener('pointercancel', drop); cv.addEventListener('pointerleave', () => { st.over = false; });
+$('wrap').onclick = () => { audio(); if (st.u >= 1 || st.uT >= 1) newBar(); else st.uT = 1; };
+document.querySelectorAll('[data-v]').forEach(b => b.onclick = () => { st.variant = b.dataset.v; document.querySelectorAll('[data-v]').forEach(q => q.classList.toggle('on', q === b)); $('pct').textContent = { dark: '72 %', milk: '38 %', white: '0 %' }[st.variant]; drawLabel(); });
+document.querySelectorAll('[data-f]').forEach(b => b.onclick = () => { st.fill = b.dataset.f; document.querySelectorAll('[data-f]').forEach(q => q.classList.toggle('on', q === b)); drawLabel(); });
+$('warm').onclick = e => { st.warm = !st.warm; e.target.classList.toggle('on', st.warm); };
+$('snd').onclick = e => { audio(); sndOn = !sndOn; e.target.classList.toggle('on', sndOn); out.gain.value = sndOn ? .8 : 0; };
+let cart = 0; $('buy').onclick = e => { cart++; e.target.textContent = `В корзине: ${cart} ${cart % 10 === 1 && cart % 100 !== 11 ? 'воображаемая плитка' : cart % 10 > 1 && cart % 10 < 5 && (cart % 100 < 12 || cart % 100 > 14) ? 'воображаемые плитки' : 'воображаемых плиток'}`; };
+
+// ---------- Кадр ----------
+let scale = Math.min(devicePixelRatio || 1, 1.5), ema = 16, lastCh = 0, last = 0, fadeT = 0; const segA = new Float32Array(96), segB = new Float32Array(96);
+function frame(now) { requestAnimationFrame(frame); const dt = Math.min(.05, last ? (now - last) / 1000 : .016);
+  if (last && now - last < 100) ema += ((now - last) - ema) * .08; // долгие кадры – это фоновая вкладка, а не медленная видеокарта
+  last = now; if (scrollY > innerHeight) return;
+  const maxS = Math.min(devicePixelRatio || 1, 2); if (ema > 24 && scale > .6 && now - lastCh > 1500) { scale *= .85; lastCh = now; ema = 16; } else if (ema < 15 && scale < maxS && now - lastCh > 5000) { scale = Math.min(maxS, scale * 1.12); lastCh = now; }
+  const w = Math.round(cv.clientWidth * scale), h = Math.round(cv.clientHeight * scale); if (w < 2 || h < 2) return; if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  st.asp = w / h; st.zoom = Math.min(1.25, st.asp * .74);
+  // обёртка
+  const pu = st.u, rate = drag && drag.wrap ? 3 : st.uT > st.u ? .5 : 1.2; st.u += Math.max(-rate * dt, Math.min(rate * dt, st.uT - st.u)); if (st.uT >= 1 && st.u > .995) st.u = 1;
+  if (st.u >= 1 && pu < 1) { $('cap').textContent = 'Нажми на бороздку – сломается. Задержи курсор – подтает'; }
+  $('wrap').textContent = st.u >= 1 || st.uT >= 1 ? 'Новая плитка' : 'Развернуть';
+  if (rG) { const sp = Math.abs(st.u - pu) / dt, foil = st.u > .45; rF.frequency.value = foil ? 5200 : 1100; rG.gain.setTargetAtTime(Math.min(.3, sp * (foil ? 1.1 : .6)) * (foil ? .25 + .75 * Math.random() : 1), ac.currentTime, .02); }
+  // куски
+  const bx = st.asp / st.zoom - .12, by = 1 / st.zoom - .12;
+  for (const g of groups) { g.pos[0] += g.vel[0] * dt; g.pos[1] += g.vel[1] * dt; g.rot += g.w * dt; const k = Math.exp(-7 * dt); g.vel[0] *= k; g.vel[1] *= k; g.w *= k; g.pos[0] = Math.max(-bx, Math.min(bx, g.pos[0])); g.pos[1] = Math.max(-by + OFF[1], Math.min(by + OFF[1], g.pos[1])); }
+  for (let i = 0; i < 24; i++) { segA.set(pose(i), i * 4); segB.set(flags(i), i * 4); }
+  // тёплый курсор плавит шоколад
+  if (st.warm && st.u >= 1 && st.over && !drag) { const x = (st.mouse[0] + 2) / 4 * 256, y = (1 - (st.mouse[1] + 1.25) / 2.5) * 160, gr = mg.createRadialGradient(x, y, 0, x, y, 13); gr.addColorStop(0, `rgba(255,255,255,${Math.min(.5, dt * 1.6)})`); gr.addColorStop(1, 'rgba(255,255,255,0)');
+    mg.globalCompositeOperation = 'lighter'; mg.fillStyle = gr; mg.fillRect(x - 14, y - 14, 28, 28); mg.globalCompositeOperation = 'source-over'; }
+  fadeT += dt; if (fadeT > .6) { fadeT = 0; mg.fillStyle = 'rgba(0,0,0,.02)'; mg.fillRect(0, 0, 256, 160); }
+  gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, tMelt); gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, mc);
+  gl.viewport(0, 0, w, h); gl.uniform2f(U.uRes, w, h); gl.uniform2f(U.uOff, OFF[0], OFF[1]); gl.uniform2f(U.uMouse, st.over ? st.mouse[0] : 9, st.mouse[1]); gl.uniform1f(U.uT, now / 1000); gl.uniform1f(U.uZoom, st.zoom); gl.uniform1f(U.uU, st.u);
+  gl.uniform1f(U.uWarm, st.warm && st.u >= 1 ? 1 : 0); gl.uniform4fv(U.uSeg, segA); gl.uniform4fv(U.uSegB, segB); gl.uniform4f(U.uBar, 0, 0, Math.cos(-.07), Math.sin(-.07)); gl.uniform3fv(U.uCol, VARS[st.variant].col); gl.uniform3fv(U.uFill, FILLS[st.fill].col);
+  gl.drawArrays(gl.TRIANGLES, 0, 3);
+  const left = segG.filter(Boolean).length; $('stat').textContent = st.u < 1 ? 'в обёртке · 90 г' : `долек ${left} из 24` + (left === 0 ? ' · съедено всё' : '');
+}
+newBar(); requestAnimationFrame(frame);
+window.__c = { st, get groups() { return groups; }, segG, snap, pick, newBar, melt(x, y, v = 1) { const px = (x + 2) / 4 * 256, py = (1 - (y + 1.25) / 2.5) * 160; mg.fillStyle = `rgba(255,255,255,${v})`; mg.beginPath(); mg.arc(px, py, 14, 0, 7); mg.fill(); } };
+})();
+</script>
+</body>
+</html>

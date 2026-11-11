@@ -1,0 +1,280 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Купе · Андрей Бумагин · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--acc:#ffd84d;--line:rgba(242,238,227,.3);--dim:rgba(242,238,227,.66)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:#07070a;color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased}
+canvas{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.85)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;max-width:34ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(12,12,11,.6);color:var(--ink);padding:9px 14px;border-radius:999px;text-shadow:none;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.7)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap;pointer-events:none}
+.bar>*{pointer-events:auto}
+.sep{width:1px;height:22px;background:var(--line);margin:0 6px}
+.stat{font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px;text-shadow:0 1px 10px rgba(0,0,0,.9)}
+.tip{position:fixed;z-index:6;pointer-events:none;transform:translate(-50%,-140%);background:var(--acc);color:#14130f;font-weight:600;font-size:13px;line-height:1;padding:8px 12px;border-radius:999px;white-space:nowrap;opacity:0;transition:opacity .15s}
+/* листы: газета, билет, экран, табло */
+.veil{position:fixed;inset:0;z-index:20;background:rgba(5,5,8,.62);backdrop-filter:blur(6px);-webkit-backdrop-filter:blur(6px);display:none;align-items:center;justify-content:center;padding:24px}
+.veil.on{display:flex}
+.sheet{position:relative;width:min(760px,100%);max-height:calc(100vh - 48px);overflow:auto;border-radius:10px;box-shadow:0 40px 90px rgba(0,0,0,.7);animation:in .28s ease-out}
+@keyframes in{from{transform:translateY(22px) scale(.97);opacity:0}}
+.x{position:absolute;right:14px;top:10px;border:0;background:none;font-size:30px;line-height:1;font-family:inherit;cursor:pointer;color:inherit;opacity:.65}
+.x:hover{opacity:1}
+.sheet a.go{display:inline-block;margin-top:6px;padding:11px 18px;border-radius:999px;font-weight:600;font-size:14px;text-decoration:none}
+.news{background:#efe6d0;color:#1d1a15;padding:34px 40px 36px;font-family:Charter,"Iowan Old Style","PT Serif",Georgia,serif}
+.news .mast{text-align:center;font-weight:700;font-size:56px;line-height:1;letter-spacing:-.02em;border-bottom:4px double #1d1a15;padding-bottom:14px}
+.news .sub{display:flex;justify-content:space-between;font:600 11px/1 -apple-system,Helvetica,Arial,sans-serif;letter-spacing:.12em;text-transform:uppercase;padding:9px 0;border-bottom:1px solid #1d1a15;margin-bottom:22px}
+.news .cols{display:grid;grid-template-columns:1.35fr 1fr;gap:30px}
+.news h2{font-size:31px;line-height:1.08;margin:0 0 10px}.news h3{font-size:20px;line-height:1.15;margin:0 0 6px}
+.news p{margin:0 0 12px;font-size:16px;line-height:1.5}.news .side>div{border-top:1px solid #1d1a15;padding:14px 0}
+.news .side>div:first-child{border-top:0;padding-top:0}.news a{color:#8a2a16}.news a.go{background:#1d1a15;color:#efe6d0}
+.tick{background:#f3cfae;color:#3a2318;padding:0;font-family:ui-monospace,"SF Mono",Menlo,monospace;background-image:repeating-linear-gradient(115deg,rgba(160,80,40,.08) 0 2px,transparent 2px 9px)}
+.tick .top{background:#b4472c;color:#fde9d6;padding:14px 26px;font-weight:700;letter-spacing:.14em;font-size:13px;display:flex;justify-content:space-between}
+.tick .body{padding:24px 26px 28px;display:grid;grid-template-columns:1fr 1fr;gap:16px 26px}
+.tick .f small{display:block;font-size:10.5px;letter-spacing:.12em;opacity:.65;margin-bottom:3px}.tick .f b{font-size:19px}
+.tick .wide{grid-column:1/-1;border-top:2px dashed rgba(58,35,24,.4);padding-top:18px;font:17px/1.55 Charter,"Iowan Old Style","PT Serif",Georgia,serif}
+.tick a.go{background:#3a2318;color:#f3cfae;font-family:-apple-system,Helvetica,Arial,sans-serif;margin-right:8px}
+.lap{background:#0d1220;color:#dfe7ff;padding:44px 44px 40px;border:10px solid #23262e;border-radius:16px;background-image:radial-gradient(ellipse at 30% 0%,rgba(90,130,255,.25),transparent 60%)}
+.lap .logo{font:800 64px/1 -apple-system,"Helvetica Neue",Arial,sans-serif;letter-spacing:-.03em;background:linear-gradient(90deg,#ffd84d,#ff9a5a);-webkit-background-clip:text;background-clip:text;color:transparent}
+.lap p{font-size:18px;line-height:1.55;max-width:48ch;color:#b9c4e6}.lap .pr{font:14px ui-monospace,Menlo,monospace;color:#7f8db8;margin:26px 0 18px}
+.lap a.go{background:#ffd84d;color:#14130f}
+.board{background:#0c0d10;color:#ffc53d;padding:30px 34px 34px;font-family:ui-monospace,"SF Mono",Menlo,monospace;border:8px solid #6b4a2a}
+.board h2{margin:0 0 4px;font-size:30px;letter-spacing:.2em;font-weight:700}.board .note{color:#8a8f9c;font-size:12.5px;margin-bottom:20px}
+.board a.row{display:grid;grid-template-columns:44px 1fr auto;gap:14px;align-items:baseline;padding:14px 0;border-top:1px solid rgba(255,197,61,.25);color:inherit;text-decoration:none;font-size:16px}
+.board a.row:hover{background:rgba(255,197,61,.07)}.board .st{font-size:12px;letter-spacing:.1em;padding:4px 8px;border:1px solid currentColor;border-radius:4px;white-space:nowrap}
+.board .st.g{color:#63e08a}.board .st.w{color:#9fb4ff}
+@media (max-width:900px){.hud p{display:none}.news .cols,.tick .body{grid-template-columns:1fr}.news .mast{font-size:40px}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Купе</h1>
+    <p>Личная страница Андрея Бумагина в виде ночного купе. Всё, что лежит и висит, – разделы сайта: газета, билет, ноутбук, расписание. Чай можно помешать, свет – выключить.</p>
+  </div>
+  <nav class="nav"><a href="rocket.html">← Назад</a><a href="index.html">Все демо</a><a href="diafilm.html">Дальше →</a></nav>
+</div>
+<div class="tip" id="tip"></div>
+<div class="bar">
+  <button class="pill" data-o="news">Газета</button><button class="pill" data-o="ticket">Билет</button><button class="pill" data-o="laptop">Ноутбук</button><button class="pill" data-o="board">Расписание</button><span class="sep"></span>
+  <button class="pill on" id="light">Свет</button><button class="pill on" id="snd">Звук</button>
+  <span class="stat" id="stat"></span>
+</div>
+<div class="veil" id="veil"><div class="sheet" id="sheet"></div></div>
+<script>
+'use strict';
+// ---------- Содержание сайта: правится здесь, в одном месте ----------
+const SITE = {
+  name: 'Андрей Бумагин', channel: 'AI да Бумагин!', telegram: 'https://t.me/aibumagin', showcase: 'https://aibumagin.github.io/fable/',
+  youtube: '', // сюда – ссылку на YouTube-канал, тогда появится кнопка
+  about: 'Меня зовут Андрей Бумагин. Я каждый день работаю с Claude, ChatGPT, Gemini и Perplexity. Делаю свои ИИ-продукты, например MimikkAI. А на YouTube и в Telegram показываю, как с помощью ИИ по-настоящему автоматизировать работу.',
+  posts: [
+    { title: 'Anthropic выпустила Claude Fable 5.2 – и я дал ей одну фразу', text: '«Сделай мне разные интересные штуки, чтобы было что показать людям». Ни ТЗ, ни примеров, ни слова про дизайн. Она вернулась с двенадцатью демо: океан, чёрная дыра, сайт часов, которых нет. Каждое – один файл, без библиотек и без единой картинки.', href: 'https://aibumagin.github.io/fable/', link: 'Потрогать все двенадцать' },
+    { title: 'Вторая серия: тринадцать вещей, которые хочется потрогать', text: 'Радиола, колокол, самовар, пинбол – и это купе.', href: 'index.html', link: 'Открыть витрину' },
+    { title: 'Это не революция', text: 'Fable 5.2 – заметный шаг вперёд, а не «сильный ИИ уже здесь». Что в ней нового и кому она нужна – в канале.', href: 'https://t.me/aibumagin', link: 'Читать в Telegram' }
+  ],
+  videos: [
+    { n: '01', title: 'Claude Fable 5.2: двенадцать демо с одной фразы', st: 'ВЫШЕЛ', cls: 'g', href: 'https://aibumagin.github.io/fable/' },
+    { n: '02', title: 'Тринадцать вещей, которые хочется потрогать', st: 'НА ПЕРРОНЕ', cls: '', href: 'index.html' },
+    { n: '03', title: 'Следующий выпуск – анонс в Telegram', st: 'ПО РАСПИСАНИЮ', cls: 'w', href: 'https://t.me/aibumagin' }
+  ],
+  product: { name: 'MimikkAI', text: 'Продукт, который я делаю сам. О том, как он устроен и что умеет, рассказываю в Telegram-канале.', href: 'https://t.me/aibumagin' }
+};
+const $ = id => document.getElementById(id), cv = $('c'), g = cv.getContext('2d');
+const esc = s => s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const ext = h => /^https?:/.test(h) ? ' target="_blank" rel="noopener"' : '';
+const SHEETS = {
+  news: () => `<div class="news"><button class="x" aria-label="Закрыть">×</button><div class="mast">${esc(SITE.channel)}</div><div class="sub"><span>Газета одного канала</span><span>Выходит, когда есть что показать</span></div>
+    <div class="cols"><div><h2>${esc(SITE.posts[0].title)}</h2><p>${esc(SITE.posts[0].text)}</p><p><a href="${SITE.posts[0].href}"${ext(SITE.posts[0].href)}>${esc(SITE.posts[0].link)} →</a></p></div>
+    <div class="side">${SITE.posts.slice(1).map(p => `<div><h3>${esc(p.title)}</h3><p>${esc(p.text)}</p><a href="${p.href}"${ext(p.href)}>${esc(p.link)} →</a></div>`).join('')}</div></div>
+    <a class="go" href="${SITE.telegram}" target="_blank" rel="noopener">Подписаться на канал</a></div>`,
+  ticket: () => `<div class="tick"><button class="x" aria-label="Закрыть" style="color:#fde9d6">×</button><div class="top"><span>ПРОЕЗДНОЙ ДОКУМЕНТ</span><span>№ 5.2-02-13&nbsp;&nbsp;&nbsp;&nbsp;</span></div><div class="body">
+    <div class="f"><small>ПАССАЖИР</small><b>${esc(SITE.name.toUpperCase())}</b></div><div class="f"><small>ПОЕЗД</small><b>№ 5.2 «ФАБУЛА»</b></div>
+    <div class="f"><small>МАРШРУТ</small><b>ИДЕЯ → РАБОТАЮЩАЯ ВЕЩЬ</b></div><div class="f"><small>ВАГОН / МЕСТО</small><b>02 / 13</b></div>
+    <div class="f"><small>БАГАЖ</small><b>CLAUDE, CHATGPT, GEMINI, PERPLEXITY</b></div><div class="f"><small>КЛАСС</small><b>КУПЕ, ЧАЙ ВКЛЮЧЁН</b></div>
+    <div class="wide">${esc(SITE.about)}<br><br><a class="go" href="${SITE.telegram}" target="_blank" rel="noopener">Telegram</a>${SITE.youtube ? `<a class="go" href="${SITE.youtube}" target="_blank" rel="noopener">YouTube</a>` : ''}<a class="go" href="${SITE.showcase}" target="_blank" rel="noopener">Витрина демо</a></div></div></div>`,
+  laptop: () => `<div class="lap"><button class="x" aria-label="Закрыть">×</button><div class="logo">${esc(SITE.product.name)}</div><div class="pr">~/products/mimikkai $ cat README</div><p>${esc(SITE.product.text)}</p><a class="go" href="${SITE.product.href}" target="_blank" rel="noopener">Спросить в Telegram</a></div>`,
+  board: () => `<div class="board"><button class="x" aria-label="Закрыть">×</button><h2>РАСПИСАНИЕ</h2><div class="note">ролики канала · время местное</div>${SITE.videos.map(v => `<a class="row" href="${v.href}"${ext(v.href)}><span>${v.n}</span><span>${esc(v.title)}</span><span class="st ${v.cls}">${v.st}</span></a>`).join('')}</div>`
+};
+const veil = $('veil'), opened = {};
+function open(id) { audio(); opened[id] = 1; $('sheet').innerHTML = SHEETS[id](); veil.classList.add('on'); snd.paper(); }
+function close() { veil.classList.remove('on'); }
+veil.addEventListener('click', e => { if (e.target === veil || e.target.classList.contains('x')) close(); });
+addEventListener('keydown', e => { if (e.code === 'Escape') close(); });
+document.querySelectorAll('[data-o]').forEach(b => b.onclick = () => open(b.dataset.o));
+
+// ---------- Геометрия: одна точка схода, задняя стена – в масштабе 1 ----------
+const VX = 800, VY = 330, pt = (x, y, s) => [VX + (x - VX) * s, VY + (y - VY) * s], hs = n => { const x = Math.sin(n * 127.1 + 3.3) * 43758.5453; return x - Math.floor(x); };
+const GX = 600, GY = 130, GW = 400, GH = 370, GLASS = new Path2D(); GLASS.roundRect ? GLASS.roundRect(GX, GY, GW, GH, 26) : GLASS.rect(GX, GY, GW, GH);
+function poly(pts, fill, stroke, lw) { g.beginPath(); pts.forEach(([x, y], i) => i ? g.lineTo(x, y) : g.moveTo(x, y)); g.closePath(); if (fill) { g.fillStyle = fill; g.fill(); } if (stroke) { g.strokeStyle = stroke; g.lineWidth = lw || 1; g.stroke(); } }
+function lin(x0, y0, x1, y1, stops) { const q = g.createLinearGradient(x0, y0, x1, y1); stops.forEach((s, i) => q.addColorStop(i / (stops.length - 1), s)); return q; }
+function glow(x, y, r, col, a) { const q = g.createRadialGradient(x, y, 0, x, y, r); q.addColorStop(0, `rgba(${col},${a})`); q.addColorStop(1, `rgba(${col},0)`); g.fillStyle = q; g.fillRect(x - r, y - r, r * 2, r * 2); }
+// текстуры на плоскостях: пол/стол/полка – горизонтальными полосками, стена – вертикальными
+function floorTex(img, x0, x1, yb, s0, s1) { const ya = VY + (yb - VY) * s0, yz = VY + (yb - VY) * s1; for (let y = ya; y < yz; y += 1) { const s = (y - VY) / (yb - VY), v = (1 / s0 - 1 / s) / (1 / s0 - 1 / s1); g.drawImage(img, 0, Math.min(img.height - 1, v * img.height), img.width, 1, VX + (x0 - VX) * s, y, (x1 - x0) * s, 1.6); } }
+function wallTex(img, xw, y0, y1, s0, s1) { const xa = VX + (xw - VX) * s1, xz = VX + (xw - VX) * s0; for (let x = xa; x < xz; x += 1) { const s = (x - VX) / (xw - VX), u = (1 / s0 - 1 / s) / (1 / s0 - 1 / s1); g.drawImage(img, Math.min(img.width - 1, (1 - u) * img.width), 0, 1, img.height, x, VY + (y0 - VY) * s, 1.6, (y1 - y0) * s); } }
+function tex(w, h, draw) { const c = document.createElement('canvas'); c.width = w; c.height = h; draw(c.getContext('2d'), w, h); return c; }
+const SERIF = 'Charter,"Iowan Old Style","PT Serif",Georgia,serif', MONO = 'ui-monospace,"SF Mono",Menlo,monospace';
+const T_NEWS = tex(260, 410, (c, w, h) => { c.fillStyle = '#e9dfc6'; c.fillRect(0, 0, w, h); c.fillStyle = '#1d1a15'; c.textAlign = 'center'; c.font = `700 36px ${SERIF}`; c.fillText(SITE.channel, w / 2, 46); c.fillRect(12, 58, w - 24, 3); c.fillRect(12, 64, w - 24, 1);
+  c.textAlign = 'left'; c.font = `700 21px ${SERIF}`; ['Fable 5.2: двенадцать', 'демо с одной фразы'].forEach((l, i) => c.fillText(l, 14, 94 + i * 24)); c.fillStyle = '#7d8aa6'; c.fillRect(14, 132, 110, 84); c.fillStyle = '#f1e6cc'; c.beginPath(); c.moveTo(40, 190); c.lineTo(98, 190); c.lineTo(84, 204); c.lineTo(54, 204); c.closePath(); c.fill(); c.beginPath(); c.moveTo(52, 190); c.lineTo(69, 158); c.lineTo(86, 190); c.fill();
+  c.fillStyle = 'rgba(29,26,21,.55)'; for (let i = 0; i < 10; i++) c.fillRect(134, 134 + i * 9, 112 - (i % 4 === 3 ? 30 : 0), 3); for (let i = 0; i < 20; i++) { c.fillRect(14, 232 + i * 8.6, 112 - (i % 5 === 4 ? 40 : 0), 3); c.fillRect(134, 232 + i * 8.6, 112 - (i % 6 === 5 ? 50 : 0), 3); } c.fillStyle = 'rgba(0,0,0,.1)'; c.fillRect(0, h / 2 - 1, w, 2); });
+const T_TICK = tex(300, 120, (c, w, h) => { c.fillStyle = '#f3cfae'; c.fillRect(0, 0, w, h); c.strokeStyle = 'rgba(160,80,40,.18)'; for (let i = -h; i < w; i += 7) { c.beginPath(); c.moveTo(i, h); c.lineTo(i + h * .5, 0); c.stroke(); } c.fillStyle = '#b4472c'; c.fillRect(0, 0, w, 24); c.fillStyle = '#fde9d6'; c.font = `700 12px ${MONO}`; c.fillText('ПРОЕЗДНОЙ ДОКУМЕНТ', 10, 16);
+  c.fillStyle = '#3a2318'; c.font = `700 19px ${MONO}`; c.fillText('БУМАГИН А.', 10, 50); c.font = `600 11px ${MONO}`; c.fillText('ПОЕЗД 5.2 · ВАГОН 02 · МЕСТО 13', 10, 70); c.fillText('ИДЕЯ → РАБОТАЮЩАЯ ВЕЩЬ', 10, 88); for (let i = 0; i < 26; i++) c.fillRect(196 + i * 3.7, 38, hs(i) > .5 ? 2.4 : 1.2, 60); c.fillRect(10, 100, 170, 2); });
+const T_BOARD = tex(240, 330, (c, w, h) => { c.fillStyle = '#6b4a2a'; c.fillRect(0, 0, w, h); c.fillStyle = '#0c0d10'; c.fillRect(10, 10, w - 20, h - 20); c.fillStyle = '#ffc53d'; c.font = `700 20px ${MONO}`; c.fillText('РАСПИСАНИЕ', 24, 46); c.fillStyle = 'rgba(255,197,61,.4)'; c.fillRect(24, 56, w - 48, 2);
+  SITE.videos.forEach((v, i) => { const y = 90 + i * 74; c.fillStyle = '#ffc53d'; c.font = `700 17px ${MONO}`; c.fillText(v.n, 24, y); c.font = `600 12px ${MONO}`; const ws = v.title.split(' '); let l = '', k = 0; for (const wd of ws) { if (c.measureText(l + ' ' + wd).width > 150 && l) { c.fillText(l, 58, y - 4 + k * 15); l = wd; k++; if (k > 2) break; } else l = l ? l + ' ' + wd : wd; } if (k < 3) c.fillText(l, 58, y - 4 + k * 15);
+    c.fillStyle = v.cls === 'g' ? '#63e08a' : v.cls === 'w' ? '#9fb4ff' : '#ffc53d'; c.font = `700 10px ${MONO}`; c.fillText(v.st, 58, y + 46); c.fillStyle = 'rgba(255,197,61,.22)'; c.fillRect(24, y + 56, w - 48, 1); }); });
+const T_LAP = tex(264, 176, () => {}), lapc = T_LAP.getContext('2d');
+function drawLap(t) { const c = lapc; c.fillStyle = '#0d1220'; c.fillRect(0, 0, 264, 176); const q = c.createRadialGradient(70, 0, 0, 70, 0, 200); q.addColorStop(0, 'rgba(90,130,255,.45)'); q.addColorStop(1, 'rgba(90,130,255,0)'); c.fillStyle = q; c.fillRect(0, 0, 264, 176);
+  const lg = c.createLinearGradient(20, 0, 230, 0); lg.addColorStop(0, '#ffd84d'); lg.addColorStop(1, '#ff9a5a'); c.fillStyle = lg; c.font = '800 44px -apple-system,"Helvetica Neue",Arial,sans-serif'; c.fillText(SITE.product.name, 18, 78);
+  c.fillStyle = '#8fa0d0'; c.font = `500 13px ${MONO}`; c.fillText('~/products $ open' + (Math.floor(t * 2) % 2 ? ' ▌' : ''), 20, 112); c.fillStyle = 'rgba(255,255,255,.14)'; for (let i = 0; i < 3; i++) c.fillRect(20, 130 + i * 12, 120 + 70 * Math.abs(Math.sin(t * .7 + i * 1.7)), 5); }
+
+// ---------- За окном ----------
+let lampU = [];
+function outside(t, lampA, bump) { const d = t * 100; lampU = []; g.save(); g.clip(GLASS); g.translate(GX, GY - bump * .7);
+  g.fillStyle = lin(0, -10, 0, 245, ['#060a1c', '#101b40', '#22335f']); g.fillRect(-5, -10, GW + 10, 260);
+  for (let i = 0; i < 46; i++) { g.fillStyle = `rgba(255,255,255,${(.25 + .6 * hs(i + 9)) * (.7 + .3 * Math.sin(t * 2 + i))})`; g.fillRect(hs(i) * GW, hs(i + 50) * 205, 1.5, 1.5); }
+  glow(318, 66, 80, '190,205,255', .3); g.fillStyle = '#f4f0dc'; g.beginPath(); g.arc(318, 66, 15, 0, 7); g.fill(); g.fillStyle = 'rgba(180,170,140,.35)'; g.beginPath(); g.arc(313, 62, 4, 0, 7); g.arc(323, 71, 3, 0, 7); g.fill();
+  for (let i = 0; i < 3; i++) { g.fillStyle = 'rgba(120,140,190,.16)'; g.beginPath(); g.ellipse(((hs(i + 70) * 700 - d * .015) % 700 + 700) % 700 - 150, 50 + i * 42, 90, 9, 0, 0, 7); g.fill(); }
+  g.fillStyle = '#0d1733'; g.beginPath(); g.moveTo(-5, 250); for (let x = -5; x <= GW + 5; x += 8) g.lineTo(x, 222 - 14 * Math.sin((x + d * .05) * .012) - 8 * Math.sin((x + d * .05) * .031 + 2)); g.lineTo(GW + 5, 250); g.fill();
+  g.fillStyle = lin(0, 232, 0, GH, ['#1b2a52', '#33456f', '#4a5c8c']); g.fillRect(-5, 236, GW + 10, GH - 230); g.fillStyle = 'rgba(200,215,255,.1)'; for (let i = 0; i < 6; i++) g.fillRect(290 + hs(i + 31) * 40 - i * 4, 246 + i * 9, 26 + i * 8, 1.6);
+  const f1 = d * .9; g.fillStyle = '#081026'; for (let i = Math.floor((f1 - 40) / 30); i <= Math.floor((f1 + GW + 40) / 30); i++) { if (hs(Math.floor(i / 9) * 3.3) < .3) continue; const x = i * 30 + hs(i) * 14 - f1, h = 24 + hs(i + 7) * 34, b = 246 + hs(i + 3) * 8; g.beginPath(); g.moveTo(x - 10, b); g.lineTo(x, b - h); g.lineTo(x + 10, b); g.moveTo(x - 7, b - h * .45); g.lineTo(x, b - h * 1.15); g.lineTo(x + 7, b - h * .45); g.fill(); }
+  const f2 = d * 1.4; for (let j = Math.floor((f2 - 300) / 1500); j <= Math.floor((f2 + GW) / 1500); j++) for (let k = 0; k < 4; k++) { const x = j * 1500 + 300 + k * 46 + hs(j * 7 + k) * 14 - f2, y = 252 + hs(j + k * 3) * 6; if (x < -40 || x > GW + 10) continue;
+    g.fillStyle = '#0a1024'; g.fillRect(x, y, 30, 17); g.beginPath(); g.moveTo(x - 3, y); g.lineTo(x + 15, y - 12); g.lineTo(x + 33, y); g.fill(); g.strokeStyle = 'rgba(200,215,255,.45)'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(x - 3, y); g.lineTo(x + 15, y - 12); g.lineTo(x + 33, y); g.stroke();
+    if (hs(j * 3 + k) > .25) { glow(x + 10, y + 9, 16, '255,200,110', .5); g.fillStyle = '#ffcf7a'; g.fillRect(x + 7, y + 6, 6, 6); } }
+  const f3 = d * 3; g.strokeStyle = 'rgba(4,6,13,.95)'; g.fillStyle = '#04060d'; g.lineWidth = 1.2; for (let i = Math.floor((f3 - 340) / 330); i <= Math.floor((f3 + GW) / 330); i++) { const x = i * 330 - f3; g.fillRect(x - 2.5, 92, 5, 250); g.fillRect(x - 15, 104, 30, 3); g.fillRect(x - 11, 120, 22, 3); for (const [y, o] of [[104, 13], [104, -13], [120, 9]]) { g.beginPath(); g.moveTo(x + o, y); g.quadraticCurveTo(x + 165 + o, y + 26, x + 330 + o, y); g.stroke(); } }
+  g.fillStyle = lin(0, 316, 0, GH, ['#4a5c8c', '#7286b6']); g.beginPath(); g.moveTo(-5, GH + 5); g.lineTo(-5, 322); for (let x = 0; x <= GW + 5; x += 20) g.lineTo(x, 320 + 3 * Math.sin((x + d * 6) * .02)); g.lineTo(GW + 5, GH + 5); g.fill();
+  g.fillStyle = 'rgba(225,233,255,.28)'; for (let i = 0; i < 22; i++) g.fillRect(((hs(i) * 470 - d * 6 * (.7 + hs(i + 4) * .6)) % 470 + 470) % 470 - 40, 326 + hs(i + 2) * 42, 30 + hs(i + 5) * 40, 1.6);
+  const f4 = d * 3.8; for (let i = Math.floor((f4 - 600) / 2600); i <= Math.floor((f4 + GW + 200) / 2600); i++) { const x = i * 2600 + 900 - f4; if (x < -160 || x > GW + 160) continue; lampU.push(x / GW); g.fillStyle = '#04060d'; g.fillRect(x - 3, 40, 6, 300); g.fillRect(x - 30, 40, 30, 4); glow(x - 28, 50, 130, '255,214,150', .85); g.fillStyle = '#fff4d0'; g.beginPath(); g.arc(x - 28, 48, 6, 0, 7); g.fill(); g.fillStyle = 'rgba(255,214,150,.22)'; g.beginPath(); g.ellipse(x - 28, 338, 100, 18, 0, 0, 7); g.fill(); }
+  g.strokeStyle = 'rgba(235,240,255,.55)'; g.lineWidth = 1.3; g.beginPath(); for (let i = 0; i < 80; i++) { const sp = .6 + hs(i) * .9, x = ((hs(i + 11) * 520 - d * 5.2 * sp) % 520 + 520) % 520 - 60, y = (hs(i + 23) * 400 + t * 70 * sp) % 400 - 15, l = 8 + 10 * sp; g.moveTo(x, y); g.lineTo(x + l, y - l * .16); } g.stroke();
+  g.restore(); g.save(); g.clip(GLASS); g.fillStyle = lin(GX, 0, GX + GW, 0, [`rgba(255,215,160,${.16 * lampA})`, 'rgba(255,215,160,0)', 'rgba(255,215,160,0)', `rgba(255,215,160,${.13 * lampA})`]); g.fillRect(GX, GY, GW, GH); g.fillStyle = `rgba(255,240,205,${.07 * lampA})`; g.fillRect(GX + 110, GY + 22, 180, 9);
+  for (const [x, y] of [[GX, GY + GH], [GX + GW, GY + GH], [GX, GY], [GX + GW, GY]]) glow(x, y, 70, '235,242,255', .22); g.restore(); }
+
+// ---------- Купе ----------
+function berth(side) { const m = x => side < 0 ? x : 1600 - x, q = (x, y, s) => pt(m(x), y, s);
+  poly([q(440, 400, 1), q(440, 592, 1), q(440, 592, 3.3), q(440, 400, 3.3)], lin(m(440), 0, m(-300), 0, ['#84322d', '#6d2622']));
+  g.strokeStyle = 'rgba(40,10,8,.45)'; g.lineWidth = 2; for (const y of [462, 528]) { const a = q(440, y, 1), b = q(440, y, 3.3); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); } for (const s of [1.25, 1.6, 2.05, 2.6]) { const a = q(440, 400, s), b = q(440, 592, s); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
+  poly([q(440, 592, 1), q(640, 592, 1), q(640, 592, 3.3), q(440, 592, 3.3)], lin(0, 592, 0, 900, ['#9a423b', '#7c312c']));
+  poly([q(640, 592, 1), q(640, 760, 1), q(640, 760, 3.3), q(640, 592, 3.3)], lin(0, 600, 0, 900, ['#5e2623', '#3d1716']));
+  const a = q(640, 592, 1), b = q(640, 592, 3.3); g.strokeStyle = 'rgba(255,190,170,.25)'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
+function sconce(side, lampA) { const [x, y] = pt(side < 0 ? 440 : 1160, 286, 1.2); g.fillStyle = '#8f8a80'; g.fillRect(x - 3, y - 6, 6, 26); poly([[x - 15, y + 8], [x + 15, y + 8], [x + 10, y - 16], [x - 10, y - 16]], lampA > .3 ? '#ffe9b8' : '#8c8473', 'rgba(60,40,20,.5)', 1); }
+function teaGlass(t, bump, stir) { const [x, y] = pt(895, 560, 1.22); g.save(); g.translate(x + bump * .6, y); g.scale(1.22, 1.22); g.rotate(bump * .014);
+  g.fillStyle = 'rgba(0,0,0,.28)'; g.beginPath(); g.ellipse(6, 2, 32, 7, 0, 0, 7); g.fill();
+  g.fillStyle = lin(-20, 0, 20, 0, ['#7a340c', '#d98a2b', '#8a3f10']); g.beginPath(); g.moveTo(-19, -92); g.lineTo(-17, -40); g.lineTo(17, -40); g.lineTo(19, -92); g.fill();
+  const tl = bump * .06; g.fillStyle = '#e3a444'; g.beginPath(); g.ellipse(0, -92, 18.6, 5 + Math.abs(bump) * .5, tl, 0, 7); g.fill(); g.fillStyle = '#f3d655'; g.beginPath(); g.ellipse(5, -92.5, 9, 2.7, tl, 0, 7); g.fill(); g.strokeStyle = '#fff6b8'; g.lineWidth = .8; g.stroke();
+  const sa = stir > 0 ? t * 9 : .4, sx = Math.cos(sa) * (stir > 0 ? 9 : 6), sy = Math.sin(sa) * (stir > 0 ? 2.5 : 1); g.strokeStyle = '#cfd3da'; g.lineWidth = 3; g.lineCap = 'round'; g.beginPath(); g.moveTo(-sx * .5, -60); g.lineTo(sx + 9, -128 + sy); g.stroke(); g.strokeStyle = '#fff'; g.lineWidth = 1; g.beginPath(); g.moveTo(-sx * .5 - 1, -62); g.lineTo(sx + 8, -127 + sy); g.stroke();
+  g.strokeStyle = 'rgba(255,255,255,.5)'; g.lineWidth = 1.4; g.beginPath(); g.ellipse(0, -103, 19.8, 5.3, 0, 0, 7); g.stroke(); g.beginPath(); g.moveTo(-19.8, -103); g.lineTo(-19, -92); g.moveTo(19.8, -103); g.lineTo(19, -92); g.stroke(); g.strokeStyle = 'rgba(255,255,255,.35)'; g.lineWidth = 2.5; g.beginPath(); g.moveTo(-13, -98); g.lineTo(-12, -64); g.stroke();
+  const mq = lin(-22, 0, 22, 0, ['#6f7178', '#eceef2', '#b9bcc4', '#62646a']); g.fillStyle = mq; g.beginPath(); g.moveTo(-21.5, -60); g.lineTo(-19, -2); g.quadraticCurveTo(0, 5, 19, -2); g.lineTo(21.5, -60); g.quadraticCurveTo(0, -54, -21.5, -60); g.fill();
+  g.strokeStyle = 'rgba(60,40,20,.75)'; g.lineWidth = 1.5; for (let r = 0; r < 2; r++) for (let i = -2; i <= 2; i++) { const cx = i * 8.2, cy = -44 + r * 22; g.beginPath(); g.moveTo(cx, cy - 9); g.quadraticCurveTo(cx + 5, cy, cx, cy + 9); g.quadraticCurveTo(cx - 5, cy, cx, cy - 9); g.stroke(); } g.fillStyle = mq; g.fillRect(-22.5, -64, 45, 6); g.fillRect(-20, -8, 40, 6); g.fillRect(-21, -35, 42, 3);
+  g.strokeStyle = '#8b8e96'; g.lineWidth = 5.5; g.beginPath(); g.moveTo(20, -54); g.bezierCurveTo(46, -56, 46, -12, 19, -12); g.stroke(); g.strokeStyle = '#f4f5f8'; g.lineWidth = 1.6; g.beginPath(); g.moveTo(21, -55.5); g.bezierCurveTo(44, -56, 44, -16, 22, -13.5); g.stroke();
+  for (let i = 0; i < 3; i++) { g.strokeStyle = `rgba(255,255,255,${.1 + .05 * i})`; g.lineWidth = 5 - i; g.beginPath(); for (let k = 0; k <= 12; k++) { const u = k / 12, yy = -104 - u * 76, xx = (i - 1) * 6 + Math.sin(u * 5 + t * 1.3 + i * 2) * (4 + u * 10); k ? g.lineTo(xx, yy) : g.moveTo(xx, yy); } g.globalAlpha = .9; g.stroke(); } g.globalAlpha = 1; g.restore(); }
+function interior(t, lampA, bump) {
+  // стены, потолок, пол
+  const bw = new Path2D(); bw.rect(440, 60, 720, 700); bw.addPath(GLASS); g.fillStyle = lin(0, 60, 0, 760, ['#d9c097', '#c6aa7f', '#b89b70']); g.fill(bw, 'evenodd');
+  g.fillStyle = '#75573d'; g.fillRect(440, 566, 720, 194); g.fillStyle = '#bdb4a2'; g.fillRect(440, 560, 720, 6); g.strokeStyle = 'rgba(90,60,30,.25)'; g.lineWidth = 2; for (const x of [520, 1080]) { g.beginPath(); g.moveTo(x, 60); g.lineTo(x, 560); g.stroke(); }
+  g.fillStyle = '#5c4430'; g.fillRect(640, 700, 320, 60); g.fillStyle = '#2c2420'; g.fillRect(700, 712, 200, 40); g.fillStyle = '#5a4d44'; for (let i = 0; i < 4; i++) g.fillRect(706, 717 + i * 9, 188, 4);
+  for (const sd of [-1, 1]) { const m = x => sd < 0 ? x : 1600 - x; poly([pt(m(440), 60, 1), pt(m(440), 760, 1), pt(m(440), 760, 3.3), pt(m(440), 60, 3.3)], lin(m(440), 0, m(-200), 0, ['#cdb188', '#b39368']));
+    g.strokeStyle = 'rgba(90,60,30,.3)'; g.lineWidth = 2.5; for (const y of [120, 400]) { const a = pt(m(440), y, 1), b = pt(m(440), y, 3.3); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); } }
+  poly([pt(440, 60, 1), pt(1160, 60, 1), pt(1160, 60, 3.3), pt(440, 60, 3.3)], lin(0, 60, 0, -400, ['#e2d8c2', '#bfb39a']));
+  poly([pt(690, 60, 1.25), pt(910, 60, 1.25), pt(910, 60, 2), pt(690, 60, 2)], lampA > .3 ? '#fff6dc' : '#8f897b', 'rgba(90,70,40,.5)', 2);
+  poly([pt(440, 760, 1), pt(1160, 760, 1), pt(1160, 760, 3.3), pt(440, 760, 3.3)], '#3f322a'); poly([pt(660, 760, 1), pt(940, 760, 1), pt(940, 760, 3.3), pt(660, 760, 3.3)], '#6c2224');
+  g.strokeStyle = '#c29a48'; g.lineWidth = 3; for (const x of [676, 924]) { const a = pt(x, 760, 1), b = pt(x, 760, 3.3); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
+  // рама, подоконник, штора-рулон, занавески
+  g.strokeStyle = '#efe7d6'; g.lineWidth = 16; g.stroke(GLASS); g.strokeStyle = 'rgba(70,50,30,.45)'; g.lineWidth = 2; const fr = new Path2D(); fr.roundRect ? fr.roundRect(GX - 9, GY - 9, GW + 18, GH + 18, 33) : fr.rect(GX - 9, GY - 9, GW + 18, GH + 18); g.stroke(fr);
+  g.fillStyle = '#e9e0cc'; g.fillRect(578, 506, 444, 13); g.fillStyle = 'rgba(60,40,20,.3)'; g.fillRect(578, 519, 444, 5);
+  g.save(); g.clip(GLASS); g.fillStyle = '#cdbf9f'; g.fillRect(GX, GY, GW, 30); g.fillStyle = 'rgba(90,70,40,.3)'; for (let i = 0; i < 4; i++) g.fillRect(GX, GY + 6 + i * 7, GW, 1.5); g.fillStyle = '#9a8c6c'; g.fillRect(GX, GY + 28, GW, 4); g.restore(); g.strokeStyle = '#9a8c6c'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(800, 162); g.lineTo(800, 186); g.stroke(); g.fillStyle = '#9a8c6c'; g.beginPath(); g.arc(800, 189, 4, 0, 7); g.fill();
+  g.fillStyle = '#b9b3a6'; g.fillRect(536, 116, 528, 5);
+  for (const sd of [-1, 1]) { const x0 = sd < 0 ? 544 : 1002, w = 54; g.fillStyle = lin(x0, 0, x0 + w, 0, ['#f4eee0', '#d9d0bc', '#f1eadb', '#cfc5b0', '#efe8d8']); g.beginPath(); g.moveTo(x0, 120); g.lineTo(x0 + w, 120); g.lineTo(x0 + w - sd * 3, 512); for (let i = 5; i >= 0; i--) g.lineTo(x0 + w * i / 6, 512 + (i % 2 ? 5 : 0)); g.closePath(); g.fill();
+    g.strokeStyle = 'rgba(120,100,70,.28)'; g.lineWidth = 1.5; for (let i = 1; i < 6; i++) { g.beginPath(); g.moveTo(x0 + w * i / 6, 122); g.lineTo(x0 + w * i / 6 + Math.sin(i * 2 + t * .9) * 1.5 * (1 + Math.abs(bump)), 510); g.stroke(); } }
+  sconce(-1, lampA); sconce(1, lampA);
+  wallTex(T_BOARD, 440, 170, 390, 1.45, 1.95);
+  berth(-1); berth(1);
+  // подушка и плед слева, газета справа
+  poly([pt(462, 570, 1.03), pt(622, 570, 1.03), pt(628, 574, 1.3), pt(456, 574, 1.3)], lin(0, 570, 0, 660, ['#f7f3ea', '#e2dccd']), 'rgba(90,80,60,.3)', 1.5); poly([pt(456, 574, 1.3), pt(628, 574, 1.3), pt(628, 592, 1.3), pt(456, 592, 1.3)], '#c9c2b2', 'rgba(90,80,60,.3)', 1.5); poly([pt(470, 592, 1.36), pt(615, 592, 1.36), pt(615, 592, 1.7), pt(470, 592, 1.7)], '#4c6a8a'); poly([pt(470, 592, 1.7), pt(615, 592, 1.7), pt(615, 610, 1.7), pt(470, 610, 1.7)], '#3a5470');
+  g.strokeStyle = 'rgba(230,220,190,.5)'; g.lineWidth = 2; for (const s of [1.44, 1.52, 1.6]) { const a = pt(470, 592, s), b = pt(615, 592, s); g.beginPath(); g.moveTo(a[0], a[1]); g.lineTo(b[0], b[1]); g.stroke(); }
+  poly([pt(985, 592, 1.25), pt(1115, 592, 1.25), pt(1115, 592, 1.75), pt(985, 592, 1.75)].map(([x, y]) => [x + 5, y + 6]), 'rgba(0,0,0,.3)'); floorTex(T_NEWS, 985, 1115, 590, 1.25, 1.75);
+  // столик
+  poly([pt(672, 566, 1), pt(928, 566, 1), [1017, 704], [583, 704]], 'rgba(0,0,0,.4)'); poly([pt(660, 560, 1), pt(940, 560, 1), pt(940, 560, 1.55), pt(660, 560, 1.55)], lin(0, 560, 0, 690, ['#d6bf98', '#e4d0ab']));
+  const fa = pt(660, 560, 1.55), fb = pt(940, 560, 1.55); g.fillStyle = lin(0, fa[1], 0, fa[1] + 15, ['#c8c2b6', '#77726a']); g.fillRect(fa[0], fa[1], fb[0] - fa[0], 15);
+  // ноутбук
+  poly([pt(672, 560, 1.1), pt(792, 560, 1.1), pt(792, 560, 1.27), pt(672, 560, 1.27)], lin(0, 583, 0, 624, ['#aeb3bb', '#d0d4da']), 'rgba(40,44,52,.6)', 1); poly([pt(680, 560, 1.115), pt(784, 560, 1.115), pt(784, 560, 1.2), pt(680, 560, 1.2)], '#2a2d34'); poly([pt(712, 560, 1.215), pt(752, 560, 1.215), pt(752, 560, 1.255), pt(712, 560, 1.255)], '#9da2aa');
+  const la = pt(672, 560, 1.1), lb = pt(792, 560, 1.1); poly([[la[0] + 5, la[1] - 98], [lb[0] - 5, la[1] - 98], [lb[0], la[1]], [la[0], la[1]]], '#1a1c22', '#3a3d45', 1.5); g.drawImage(T_LAP, la[0] + 9, la[1] - 93, lb[0] - la[0] - 18, 86);
+  // сахар, билет, чай
+  for (const [x, s] of [[848, 1.3], [862, 1.33]]) { const [px, py] = pt(x, 560, s); g.fillStyle = '#f7f4ec'; g.fillRect(px - 6, py - 9, 12, 9); g.fillStyle = '#d8d3c6'; g.fillRect(px - 6, py - 2, 12, 2); g.fillStyle = '#fff'; g.fillRect(px - 6, py - 11, 12, 3); }
+  poly([pt(790, 560, 1.37), pt(910, 560, 1.37), pt(910, 560, 1.53), pt(790, 560, 1.53)].map(([x, y]) => [x + 3, y + 4]), 'rgba(0,0,0,.25)'); floorTex(T_TICK, 790, 910, 560, 1.37, 1.53);
+}
+const HOT = [
+  { id: 'tea', label: 'Чай: помешать', poly: [[868, 482], [962, 482], [962, 620], [868, 620]] },
+  { id: 'ticket', label: 'Билет: обо мне', poly: [pt(790, 560, 1.37), pt(910, 560, 1.37), pt(910, 560, 1.53), pt(790, 560, 1.53)] },
+  { id: 'laptop', label: 'Ноутбук: MimikkAI', poly: [[660, 483], [792, 483], pt(792, 560, 1.27), pt(672, 560, 1.27)] },
+  { id: 'news', label: 'Газета: посты', poly: [pt(985, 590, 1.25), pt(1115, 590, 1.25), pt(1115, 590, 1.75), pt(985, 590, 1.75)] },
+  { id: 'board', label: 'Расписание: ролики', poly: [pt(440, 170, 1.45), pt(440, 390, 1.45), pt(440, 390, 1.95), pt(440, 170, 1.95)] },
+  { id: 'light', label: 'Свет', poly: [[1226, 250], [1272, 250], [1272, 310], [1226, 310]] }
+];
+const inside = (p, x, y) => { let c = false; for (let i = 0, j = p.length - 1; i < p.length; j = i++) if ((p[i][1] > y) !== (p[j][1] > y) && x < (p[j][0] - p[i][0]) * (y - p[i][1]) / (p[j][1] - p[i][1]) + p[i][0]) c = !c; return c; };
+
+// ---------- Звук ----------
+let ac, out, nbuf, sndOn = true, aOff = 0, nextK = 0;
+function audio() { if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)(); out = ac.createGain(); out.gain.value = sndOn ? .8 : 0; const cmp = ac.createDynamicsCompressor(); out.connect(cmp); cmp.connect(ac.destination);
+  nbuf = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate); const d = nbuf.getChannelData(0); for (let i = 0; i < d.length; i++) d[i] = Math.random() * 2 - 1;
+  for (const [type, f, q, v] of [['lowpass', 130, .7, .5], ['bandpass', 1100, .5, .012]]) { const s = ac.createBufferSource(); s.buffer = nbuf; s.loop = true; const fl = ac.createBiquadFilter(); fl.type = type; fl.frequency.value = f; fl.Q.value = q; const gn = ac.createGain(); gn.gain.value = v; s.connect(fl); fl.connect(gn); gn.connect(out); s.start(); }
+  aOff = ac.currentTime - performance.now() / 1000; }
+function hit(freq, q, dur, vol, when, type = 'lowpass') { const t = Math.max(ac.currentTime, when), s = ac.createBufferSource(), f = ac.createBiquadFilter(), gn = ac.createGain(); s.buffer = nbuf; f.type = type; f.frequency.value = freq; f.Q.value = q; gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(.0008, t + dur); s.connect(f); f.connect(gn); gn.connect(out); s.start(t, Math.random(), dur + .02); }
+function tone(f1, dur, vol, when, f2) { const t = Math.max(ac.currentTime, when), o = ac.createOscillator(), gn = ac.createGain(); o.frequency.setValueAtTime(f1, t); if (f2) o.frequency.exponentialRampToValueAtTime(f2, t + dur); gn.gain.setValueAtTime(.0001, t); gn.gain.exponentialRampToValueAtTime(vol, t + .006); gn.gain.exponentialRampToValueAtTime(.0005, t + dur); o.connect(gn); gn.connect(out); o.start(t); o.stop(t + dur + .03); }
+const snd = { paper() { if (ac) { hit(2400, .6, .16, .16, 0, 'bandpass'); hit(900, .8, .1, .1, ac.currentTime + .05, 'bandpass'); } }, click() { if (ac) { hit(1800, 2, .03, .4, 0, 'bandpass'); tone(160, .05, .2, 0, 90); } },
+  stir() { if (ac) for (let i = 0; i < 6; i++) tone(2500 + Math.random() * 500, .2, .07, ac.currentTime + i * .24 + Math.random() * .04); } };
+const KN = [0, .14, .47, .61], PER = 1.3;
+function knocks(now) { if (!ac) return; while (nextK < now + .25) { const k = Math.floor(nextK / PER + 1e-6), base = k * PER; for (const o of KN) { const w = base + o + aOff; if (w < ac.currentTime) continue; hit(170, .9, .1, .55, w); tone(64, .13, .5, w, 42); if (Math.random() < .85) tone(2900 + Math.random() * 500, .14, .022 + Math.random() * .02, w + .012); }
+    if (k % 34 === 20) for (const f of [277, 349]) { tone(f, 1.6, .035, base + aOff); tone(f, 1.6, .035, base + aOff + 1.9); } nextK = base + PER; } }
+function bumpAt(t) { let b = 0; const ph = t % PER; for (const o of KN) for (const d of [ph - o, ph - o + PER]) if (d > 0 && d < .6) b += Math.exp(-d * 13) * Math.sin(d * 52); return b; }
+
+// ---------- Управление ----------
+const st = { lamp: true, lampA: 1, hover: null, stir: 0, S: 1, ox: 0, oy: 0, t0: performance.now() / 1000 };
+const toLog = e => [(e.clientX - st.ox) / st.S, (e.clientY - st.oy) / st.S];
+const hitTest = e => { const [x, y] = toLog(e); return HOT.find(h => inside(h.poly, x, y)) || null; };
+function setLight(v) { audio(); st.lamp = v; $('light').classList.toggle('on', v); snd.click(); }
+cv.addEventListener('pointermove', e => { st.hover = hitTest(e); cv.style.cursor = st.hover ? 'pointer' : 'default'; const tip = $('tip'); if (st.hover) { tip.textContent = st.hover.label; tip.style.left = e.clientX + 'px'; tip.style.top = e.clientY + 'px'; tip.style.opacity = 1; } else tip.style.opacity = 0; });
+cv.addEventListener('pointerleave', () => { st.hover = null; $('tip').style.opacity = 0; });
+cv.addEventListener('click', e => { audio(); const h = hitTest(e); if (!h) return; if (h.id === 'tea') { opened.tea = 1; st.stir = performance.now() / 1000 + 1.7; snd.stir(); } else if (h.id === 'light') { opened.light = 1; setLight(!st.lamp); } else open(h.id); });
+$('light').onclick = () => setLight(!st.lamp);
+$('snd').onclick = e => { audio(); sndOn = !sndOn; e.target.classList.toggle('on', sndOn); out.gain.value = sndOn ? .8 : 0; };
+
+// ---------- Кадр ----------
+let last = 0;
+function frame(ms) { requestAnimationFrame(frame); const now = ms / 1000, dt = Math.min(.05, last ? now - last : .016), t = now; last = now;
+  const dpr = Math.min(devicePixelRatio || 1, 2), W = cv.clientWidth, H = cv.clientHeight, w = Math.round(W * dpr), h = Math.round(H * dpr); if (w < 2 || h < 2) return; if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; }
+  const S = Math.max(W / 1600, Math.min(H / 900, W / 1240)); st.S = S; st.ox = (W - 1600 * S) / 2; st.oy = (H - 900 * S) / 2;
+  st.lampA += ((st.lamp ? 1 : 0) - st.lampA) * Math.min(1, dt * 5); const lampA = st.lampA, bump = bumpAt(t), stir = st.stir - now;
+  knocks(now); drawLap(t);
+  g.setTransform(1, 0, 0, 1, 0, 0); g.fillStyle = '#07070a'; g.fillRect(0, 0, w, h); g.setTransform(S * dpr, 0, 0, S * dpr, st.ox * dpr, (st.oy + bump * 1.3 * S) * dpr);
+  outside(t, lampA, bump); interior(t, lampA, bump); teaGlass(t, bump, stir);
+  // свет: лампы, темнота, луна, экран, пробегающие фонари
+  const dark = new Path2D(); dark.rect(-700, -700, 3000, 2300); dark.addPath(GLASS);
+  g.globalCompositeOperation = 'multiply'; g.fillStyle = `rgb(${Math.round(255 - 215 * (1 - lampA))},${Math.round(255 - 205 * (1 - lampA))},${Math.round(255 - 160 * (1 - lampA))})`; g.fill(dark, 'evenodd');
+  const vq = g.createRadialGradient(800, 420, 260, 800, 440, 1150); vq.addColorStop(0, 'rgba(255,255,255,1)'); vq.addColorStop(1, 'rgb(88,62,44)'); g.fillStyle = vq; g.fill(dark, 'evenodd'); g.globalCompositeOperation = 'lighter';
+  if (lampA > .02) { for (const sd of [-1, 1]) { const [x, y] = pt(sd < 0 ? 440 : 1160, 286, 1.2); glow(x, y + 30, 230, '255,196,120', .2 * lampA); glow(x, y - 2, 34, '255,236,190', .4 * lampA); } glow(800, -40, 520, '255,226,170', .2 * lampA); }
+  const nt = 1 - lampA; if (nt > .02) { poly([[600, 506], [1000, 506], [1240, 1000], [360, 1000]], lin(0, 500, 0, 900, [`rgba(120,150,255,${.2 * nt})`, 'rgba(120,150,255,0)'])); const lp = pt(732, 560, 1.1); glow(lp[0], lp[1] - 40, 300, '110,150,255', .3 * nt); }
+  { const lp = pt(732, 560, 1.1); glow(lp[0], lp[1] + 10, 110, '120,160,255', .1 + .12 * nt); }
+  for (const u of lampU) { const xc = 1280 - u * 960, a = (.1 + .16 * nt) * Math.max(0, 1 - Math.abs(u - .5) * 1.1); if (a <= 0) continue; g.fillStyle = lin(xc - 190, 0, xc + 190, 0, ['rgba(255,205,130,0)', `rgba(255,205,130,${a})`, 'rgba(255,205,130,0)']); poly([[xc - 150, 520], [xc + 150, 520], [xc + 330, 1000], [xc - 330, 1000]], g.fillStyle); g.fillStyle = lin(xc - 120, 0, xc + 120, 0, ['rgba(255,205,130,0)', `rgba(255,205,130,${a * .6})`, 'rgba(255,205,130,0)']); g.fillRect(xc - 120, 60, 240, 440); }
+  g.globalCompositeOperation = 'source-over';
+  // подсказки: кольца на том, что ещё не открывали, и обводка под курсором
+  for (const hp of HOT) { const cx = hp.poly.reduce((a, p) => a + p[0], 0) / hp.poly.length, cy = hp.poly.reduce((a, p) => a + p[1], 0) / hp.poly.length;
+    if (!opened[hp.id]) { const u = (t * .7 + cx * .01) % 1; g.strokeStyle = `rgba(255,216,77,${.9 * (1 - u)})`; g.lineWidth = 2.5; g.beginPath(); g.arc(cx, cy, 7 + u * 20, 0, 7); g.stroke(); g.fillStyle = '#ffd84d'; g.beginPath(); g.arc(cx, cy, 4.5, 0, 7); g.fill(); }
+    if (st.hover === hp) { g.save(); g.shadowColor = '#ffd84d'; g.shadowBlur = 16 * S * dpr; poly(hp.poly, null, '#ffd84d', 3); g.restore(); } }
+  const mins = 134 + Math.floor((now - st.t0) / 60), kmh = 86 + Math.round(Math.sin(now * .13) * 3); $('stat').textContent = `скорый № 5.2 · ${kmh} км/ч · ${String(Math.floor(mins / 60) % 24).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`;
+}
+requestAnimationFrame(frame);
+window.__k = { st, HOT, open, close, opened, SITE };
+</script>
+</body>
+</html>

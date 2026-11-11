@@ -1,0 +1,222 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Ракета в разрезе · Fable 5.2</title>
+<style>
+:root{--bg:#0c0c0b;--ink:#f2eee3;--acc:#ffd84d;--line:rgba(242,238,227,.3)}
+*{box-sizing:border-box}
+html,body{margin:0;height:100%;background:var(--bg);color:var(--ink);overflow:hidden;
+  font:15px/1.45 -apple-system,BlinkMacSystemFont,"Helvetica Neue","Segoe UI",Roboto,Arial,sans-serif;-webkit-font-smoothing:antialiased;user-select:none;-webkit-user-select:none}
+canvas#c{position:fixed;inset:0;width:100%;height:100%;display:block}
+.hud{position:fixed;z-index:5;left:28px;top:22px;right:28px;display:flex;justify-content:space-between;align-items:flex-start;gap:24px;pointer-events:none;text-shadow:0 1px 12px rgba(0,0,0,.7)}
+.hud h1{margin:0;font:500 34px/1.05 Charter,"Iowan Old Style","PT Serif",Georgia,serif;letter-spacing:-.01em}
+.hud p{margin:8px 0 0;max-width:38ch;font-size:14.5px}
+.nav{display:flex;gap:8px;pointer-events:auto;flex:none}
+.nav a,.pill{border:1px solid var(--line);background:rgba(12,12,11,.6);color:var(--ink);padding:9px 14px;border-radius:999px;text-shadow:none;
+  font-weight:500;font-size:13.5px;line-height:1;font-family:inherit;text-decoration:none;cursor:pointer;backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.nav a:hover,.pill:hover{border-color:rgba(242,238,227,.7)}
+.pill.on{background:var(--acc);border-color:var(--acc);color:#14130f}
+.tele{position:fixed;z-index:4;right:28px;top:76px;width:250px;padding:14px 16px;border:1px solid var(--line);border-radius:14px;background:rgba(12,12,11,.62);backdrop-filter:blur(8px);-webkit-backdrop-filter:blur(8px)}
+.tele div{display:flex;justify-content:space-between;gap:10px;font:13px/1.9 ui-monospace,"SF Mono",Menlo,monospace}
+.tele div span:first-child{color:rgba(242,238,227,.62)}
+.tele canvas{display:block;width:100%;height:96px;margin-top:8px;border-top:1px solid var(--line)}
+.tele small{display:block;font-size:11.5px;color:rgba(242,238,227,.62);margin-top:4px}
+.cap{position:fixed;z-index:4;left:28px;bottom:112px;max-width:min(46ch,44vw);pointer-events:none;text-shadow:0 2px 14px rgba(0,0,0,.95)}
+.cap b{display:block;font:500 27px/1.15 Charter,"Iowan Old Style","PT Serif",Georgia,serif;color:#fff3d2;margin-bottom:6px}
+.cap span{font-size:15px}
+.time{position:fixed;z-index:5;left:28px;right:28px;bottom:62px;height:40px}
+.time input{position:absolute;left:0;right:0;bottom:0;width:100%;margin:0;accent-color:var(--acc);cursor:pointer}
+.time i{position:absolute;bottom:20px;transform:translateX(-50%);font:11px/1 ui-monospace,"SF Mono",Menlo,monospace;font-style:normal;color:rgba(242,238,227,.7);white-space:nowrap;cursor:pointer;padding:3px 0 7px;border-bottom:0;text-shadow:0 1px 8px #000}
+.time i::after{content:"";position:absolute;left:50%;bottom:0;width:1px;height:5px;background:var(--line)}
+.time i:hover{color:var(--acc)}
+.bar{position:fixed;z-index:5;left:28px;bottom:20px;right:28px;display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.sep{width:1px;height:22px;background:var(--line);margin:0 6px}
+.stat{font:13px/1 ui-monospace,"SF Mono",Menlo,monospace;margin-left:10px;text-shadow:0 1px 10px rgba(0,0,0,.9)}
+@media (max-width:900px){.hud p{display:none}.tele{width:200px}}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div class="hud">
+  <div>
+    <h1>Ракета в разрезе</h1>
+    <p>Двухступенчатая ракета от заправки до орбиты. Полёт посчитан по-настоящему: тяга, масса, воздух, притяжение. Время можно тащить назад.</p>
+  </div>
+  <nav class="nav"><a href="chocolate.html">← Назад</a><a href="index.html">Все демо</a><a href="coupe.html">Дальше →</a></nav>
+</div>
+<div class="tele" id="tele">
+  <div><span>время</span><span id="tT"></span></div><div><span>высота</span><span id="tH"></span></div><div><span>скорость</span><span id="tV"></span></div>
+  <div><span>перегрузка</span><span id="tG"></span></div><div><span>масса</span><span id="tM"></span></div><div><span>тяга</span><span id="tF"></span></div>
+  <canvas id="mm" width="500" height="192"></canvas><small>Путь ракеты: больше вбок, чем вверх</small>
+</div>
+<div class="cap"><b id="capT"></b><span id="capS"></span></div>
+<div class="time" id="time"><input type="range" id="tl" min="-45" max="560" step=".1" value="-45"></div>
+<div class="bar">
+  <button class="pill on" id="play">Пауза</button><button class="pill" data-sp="1">×1</button><button class="pill on" data-sp="5">×5</button><button class="pill" data-sp="20">×20</button><span class="sep"></span>
+  <button class="pill on" id="cut">Разрез</button><button class="pill on" id="lab">Подписи</button><button class="pill on" id="snd">Звук</button>
+  <span class="stat" id="stat"></span>
+</div>
+<script>
+'use strict';
+const $ = id => document.getElementById(id), cv = $('c'), g = cv.getContext('2d');
+// ---------- Физика: считаем весь полёт заранее, шаг 0,1 с ----------
+const MU = 3.986e14, RE = 6371e3, G0 = 9.80665, DT = .1, T0 = -45, TMAX = 560, N = TMAX / DT + 1;
+const S1 = { prop: 400e3, dry: 25e3, thrust: 7600e3, isp: 300 }, S2 = { prop: 100e3, dry: 4.5e3, thrust: 950e3, isp: 345 }, PAY = 12e3, FAIR = 2e3;
+const D = {}; for (const k of ['h', 'v', 'th', 'm', 'p1', 'p2', 'f', 'q', 'dr']) D[k] = new Float32Array(N);
+const EV = { ign: -3, lift: 0 };
+(function sim() { let x = 0, y = RE, vx = 0, vy = 0, p1 = S1.prop, p2 = S2.prop, meco = null, sep = null, fair = null, cut = null, qm = 0;
+  for (let i = 0; i < N; i++) { const t = i * DT, r = Math.hypot(x, y), h = r - RE, ux = x / r, uy = y / r, hx = uy, hy = -ux, vr = vx * ux + vy * uy, vh = vx * hx + vy * hy, v = Math.hypot(vx, vy);
+    const m = PAY + (fair === null ? FAIR : 0) + S2.dry + p2 + (sep === null ? S1.dry + p1 : 0); let thrust = 0, th = cut === null ? 32 : 0;
+    if (cut === null) { if (sep === null) { if (p1 > 0) { thrust = S1.thrust; th = t < 8 ? 90 : 90 - 58 * Math.min(1, Math.pow((t - 8) / 147, .7)); } else { if (meco === null) meco = t; if (t >= meco + 3) sep = t; } }
+      else if (t >= sep + 4 && p2 > 0) { thrust = S2.thrust; const gr = MU / r / r, vrd = Math.max(-150, Math.min(600, (200e3 - h) / 45)), ar = (vrd - vr) / 14 + (gr - vh * vh / r); th = Math.asin(Math.max(-.5, Math.min(.95, ar / (thrust / m)))) * 180 / Math.PI;
+        if (vh >= Math.sqrt(MU / r)) { cut = t; thrust = 0; th = 0; } } }
+    if (fair === null && h > 110e3) fair = t;
+    const q = .5 * 1.225 * Math.exp(-h / 8500) * v * v; if (q > qm) { qm = q; EV.maxq = t; }
+    D.h[i] = h; D.v[i] = v; D.th[i] = th; D.m[i] = m; D.p1[i] = p1; D.p2[i] = p2; D.f[i] = thrust; D.q[i] = q; D.dr[i] = RE * Math.atan2(x, y);
+    const dr = q * .3 * 10.75, a = th * Math.PI / 180, tx = Math.cos(a) * hx + Math.sin(a) * ux, ty = Math.cos(a) * hy + Math.sin(a) * uy;
+    const ax = -MU * x / r ** 3 + thrust * tx / m - (v > 1 ? dr * vx / v / m : 0), ay = -MU * y / r ** 3 + thrust * ty / m - (v > 1 ? dr * vy / v / m : 0);
+    if (thrust > 0) { if (sep === null) p1 = Math.max(0, p1 - S1.thrust / (S1.isp * G0) * DT); else p2 = Math.max(0, p2 - S2.thrust / (S2.isp * G0) * DT); }
+    vx += ax * DT; vy += ay * DT; x += vx * DT; y += vy * DT; }
+  for (let k = 0; k < 3; k++) for (let i = 1; i < N - 1; i++) D.th[i] = (D.th[i - 1] + D.th[i] * 2 + D.th[i + 1]) / 4;   // сглаживаем повороты
+  Object.assign(EV, { meco, sep, ign2: sep + 4, fair, seco: cut, dep: cut + 8 }); })();
+const at = (k, t) => { const f = Math.max(0, Math.min(N - 1.001, t / DT)), i = Math.floor(f); return D[k][i] + (D[k][i + 1] - D[k][i]) * (f - i); };
+const sm = (a, b, x) => { x = Math.max(0, Math.min(1, (x - a) / (b - a))); return x * x * (3 - 2 * x); }, mix = (a, b, k) => a + (b - a) * k;
+const rgb = (a, b, k) => `rgb(${a.map((v, i) => Math.round(mix(v, b[i], k))).join(',')})`;
+
+// ---------- Состояние ----------
+const st = { t: T0, play: true, speed: 5, cut: true, lab: true, cutA: 1 };
+const fmt = (n, d = 0) => n.toLocaleString('ru-RU', { minimumFractionDigits: d, maximumFractionDigits: d });
+const PH = [
+  [T0, 'Заправка', () => 'Керосин и жидкий кислород. Топлива – 500 тонн, это 92 % всей массы. Сама ракета – почти пустая банка.'],
+  [-8, 'Зажигание', () => 'Двигатели выходят на полную тягу. Ракету пока держат замки: отпустят, только если всё в порядке.'],
+  [0, 'Старт', () => 'Тяга 7600 кН против веса 5330 кН. Запас маленький, поэтому первые секунды ракета идёт как лифт.'],
+  [EV.maxq - 10, 'Максимальный напор', () => 'Сейчас воздух давит сильнее всего. Выше он редеет, и дальше будет легче.'],
+  [EV.maxq + 14, 'Разворот', () => 'Ракета ложится набок. Орбита – это не высота, а скорость вбок: почти 8 км в секунду.'],
+  [EV.meco, 'Разделение ступеней', () => `Первая ступень сожгла 400 тонн за ${Math.round(EV.meco)} секунд. Пустой бак сбрасывают, чтобы не тащить его дальше.`],
+  [EV.ign2 + 3, 'Вторая ступень', () => `Один двигатель и почти шесть минут работы. Нужно разогнаться с ${fmt(at('v', EV.sep) / 1000, 1)} до 7,8 км/с.`],
+  [EV.fair, 'Сброс обтекателя', () => 'Воздуха почти нет. Обтекатель больше не нужен – минус две тонны.'],
+  [EV.fair + 14, 'Вторая ступень', () => 'Высота почти набрана. Теперь вся тяга уходит в скорость вбок.'],
+  [EV.seco, 'Орбита', () => 'Двигатель выключен. Спутник всё время падает, но летит вбок так быстро, что промахивается мимо Земли.'],
+  [EV.dep, 'Спутник отделился', () => 'Раскрывает солнечные батареи. Дальше он сам. Один виток – полтора часа.']
+];
+const MARKS = [[T0, 'заправка'], [0, 'старт'], [EV.maxq, 'напор'], [EV.sep, 'ступень'], [EV.seco, 'орбита']];
+for (const [t, name] of MARKS) { const i = document.createElement('i'); i.textContent = name; i.style.left = ((t - T0) / (TMAX - T0) * 100) + '%'; if (t === T0) i.style.transform = 'none'; i.onclick = () => { st.t = t - (t > T0 ? 2 : 0); audio(); }; $('time').appendChild(i); }
+
+// ---------- Звук ----------
+let ac, out, rG, rF, sndOn = true, lastT = T0;
+function audio() { if (ac) { if (ac.state === 'suspended') ac.resume(); return; }
+  ac = new (window.AudioContext || window.webkitAudioContext)(); out = ac.createGain(); out.gain.value = sndOn ? .8 : 0; out.connect(ac.destination);
+  const nb = ac.createBuffer(1, ac.sampleRate * 2, ac.sampleRate), d = nb.getChannelData(0); let b = 0; for (let i = 0; i < d.length; i++) { b = (b + (Math.random() * 2 - 1) * .08) * .985; d[i] = b * 6; }
+  const s = ac.createBufferSource(); s.buffer = nb; s.loop = true; rF = ac.createBiquadFilter(); rF.type = 'lowpass'; rF.frequency.value = 300; rG = ac.createGain(); rG.gain.value = 0; s.connect(rF); rF.connect(rG); rG.connect(out); s.start(); }
+function thud(f, vol) { if (!ac) return; const t = ac.currentTime, o = ac.createOscillator(), gn = ac.createGain(); o.frequency.setValueAtTime(f, t); o.frequency.exponentialRampToValueAtTime(f / 3, t + .3); gn.gain.setValueAtTime(vol, t); gn.gain.exponentialRampToValueAtTime(.0006, t + .35); o.connect(gn); gn.connect(out); o.start(t); o.stop(t + .4); }
+
+// ---------- Управление ----------
+$('play').onclick = () => { audio(); if (st.t >= TMAX - .2) st.t = T0; st.play = !st.play; };
+document.querySelectorAll('[data-sp]').forEach(b => b.onclick = () => { audio(); st.speed = +b.dataset.sp; document.querySelectorAll('[data-sp]').forEach(q => q.classList.toggle('on', q === b)); });
+$('cut').onclick = e => { st.cut = !st.cut; e.target.classList.toggle('on', st.cut); };
+$('lab').onclick = e => { st.lab = !st.lab; e.target.classList.toggle('on', st.lab); };
+$('snd').onclick = e => { audio(); sndOn = !sndOn; e.target.classList.toggle('on', sndOn); out.gain.value = sndOn ? .8 : 0; };
+$('tl').oninput = e => { st.t = +e.target.value; audio(); };
+addEventListener('keydown', e => { if (e.code === 'Space') { $('play').click(); e.preventDefault(); } else if (e.code === 'ArrowRight') st.t = Math.min(TMAX, st.t + 5); else if (e.code === 'ArrowLeft') st.t = Math.max(T0, st.t - 5); });
+
+// ---------- Рисование ракеты (метры, ось вверх) ----------
+let rs = 3; const rnd = () => (rs = rs * 16807 % 2147483647) / 2147483647;
+const STARS = Array.from({ length: 170 }, () => [rnd(), rnd(), .4 + rnd() * 1.2, rnd() * 6]), CLOUDS = Array.from({ length: 16 }, (_, i) => [rnd(), 1500 + i * 720 + rnd() * 400, 60 + rnd() * 110, rnd()]), EC = Array.from({ length: 22 }, () => [rnd(), rnd(), 40 + rnd() * 120, .3 + rnd() * .5]);
+function skin(y0, y1, r, dark) { const q = g.createLinearGradient(-r, 0, r, 0); if (dark) { q.addColorStop(0, '#22262c'); q.addColorStop(.35, '#4a515a'); q.addColorStop(1, '#16191d'); } else { q.addColorStop(0, '#8d97a2'); q.addColorStop(.3, '#f6f8fa'); q.addColorStop(.7, '#cfd6dd'); q.addColorStop(1, '#6f7984'); } g.fillStyle = q; g.fillRect(-r, y0, 2 * r, y1 - y0); }
+function tank(y0, y1, r, fill, col, slosh) { const p = new Path2D(), e = Math.min(1.1, (y1 - y0) * .3); p.moveTo(-r, y0 + e); p.lineTo(-r, y1 - e); p.bezierCurveTo(-r, y1 + e * .3, r, y1 + e * .3, r, y1 - e); p.lineTo(r, y0 + e); p.bezierCurveTo(r, y0 - e * .3, -r, y0 - e * .3, -r, y0 + e); p.closePath();
+  g.fillStyle = '#12161b'; g.fill(p); g.save(); g.clip(p); const lv = y0 + (y1 - y0) * fill; g.fillStyle = col; g.beginPath(); g.moveTo(-r, y0 - 1); g.lineTo(-r, lv - slosh); g.quadraticCurveTo(0, lv + slosh * .5, r, lv + slosh); g.lineTo(r, y0 - 1); g.fill();
+  if (fill > .004) { g.strokeStyle = 'rgba(255,255,255,.55)'; g.lineWidth = .1; g.beginPath(); g.moveTo(-r, lv - slosh); g.quadraticCurveTo(0, lv + slosh * .5, r, lv + slosh); g.stroke(); } g.restore(); g.strokeStyle = '#aeb6bf'; g.lineWidth = .13; g.stroke(p); }
+function nozzle(x, y0, y1, w, hot) { g.beginPath(); g.moveTo(x - w * .28, y1); g.bezierCurveTo(x - w * .3, y1 - (y1 - y0) * .5, x - w * .5, y0 + (y1 - y0) * .3, x - w * .5, y0); g.lineTo(x + w * .5, y0); g.bezierCurveTo(x + w * .5, y0 + (y1 - y0) * .3, x + w * .3, y1 - (y1 - y0) * .5, x + w * .28, y1); g.closePath();
+  const q = g.createLinearGradient(x - w / 2, 0, x + w / 2, 0); q.addColorStop(0, '#1b1d21'); q.addColorStop(.4, hot > 0 ? rgb([110, 114, 122], [255, 150, 70], hot * .6) : '#6e727a'); q.addColorStop(1, '#101114'); g.fillStyle = q; g.fill(); }
+function flame(x, y, w, len, a, vac, t) { if (a <= .01) return; const fl = 1 + .07 * Math.sin(t * 91 + x) + .05 * Math.sin(t * 57 + x * 3), L = len * fl * a, W = w * (1 + vac * 2.2); g.save(); g.globalCompositeOperation = 'lighter';
+  const q = g.createLinearGradient(0, y, 0, y - L); q.addColorStop(0, `rgba(${Math.round(mix(255, 190, vac))},${Math.round(mix(244, 215, vac))},${Math.round(mix(214, 255, vac))},${mix(.95, .42, vac)})`); q.addColorStop(.25, `rgba(${Math.round(mix(255, 150, vac))},${Math.round(mix(176, 180, vac))},${Math.round(mix(60, 255, vac))},${mix(.7, .15, vac)})`); q.addColorStop(1, 'rgba(255,90,20,0)');
+  g.fillStyle = q; g.beginPath(); g.moveTo(x - w * .5, y); g.bezierCurveTo(x - W, y - L * .3, x - W * .7, y - L * .8, x, y - L); g.bezierCurveTo(x + W * .7, y - L * .8, x + W, y - L * .3, x + w * .5, y); g.fill();
+  if (vac < .5) for (let i = 1; i < 5; i++) { g.fillStyle = `rgba(255,250,225,${.5 * (1 - vac * 2) * (1 - i / 5) * a})`; g.beginPath(); g.ellipse(x, y - L * (.07 + i * .1), w * .3, L * .03, 0, 0, 7); g.fill(); } g.restore(); }
+function stage1(s) { // двигатели, первая ступень, переходник
+  for (const x of [-1.15, 0, 1.15]) nozzle(x, 0, 3.2, 1.25, s.a1);
+  skin(3, 36, 1.85); skin(36, 40.5, 1.85, true); g.fillStyle = '#16191d'; g.fillRect(-1.85, 33.2, 3.7, .5); g.fillRect(-1.85, 3, 3.7, .8);
+  g.save(); g.globalAlpha = st.cutA; g.fillStyle = '#1b1f25'; g.fillRect(-1.72, 3.2, 3.44, 37.1);
+  tank(4.6, 15.4, 1.6, s.f1, '#e59a2e', s.sl); tank(16.6, 35, 1.6, s.f1, '#86d4ff', s.sl); g.fillStyle = '#8f98a2'; g.fillRect(-.14, 3.4, .28, 13.6);
+  for (const x of [-1.05, 0, 1.05]) { g.fillStyle = '#59616b'; g.beginPath(); g.arc(x, 3.9, .42, 0, 7); g.fill(); } g.restore();
+  g.strokeStyle = '#59616b'; g.lineWidth = .12; g.strokeRect(-1.85, 3, 3.7, 37.5); }
+function stage2(s) { nozzle(0, 36.5, 40.6, 2.3, s.a2); skin(40.5, 50, 1.85); g.fillStyle = '#16191d'; g.fillRect(-1.85, 49.2, 3.7, .35);
+  g.save(); g.globalAlpha = st.cutA; g.fillStyle = '#1b1f25'; g.fillRect(-1.72, 40.7, 3.44, 9.2); tank(41.1, 44.2, 1.6, s.f2, '#e59a2e', s.sl2); tank(44.7, 49.5, 1.6, s.f2, '#86d4ff', s.sl2); g.fillStyle = '#8f98a2'; g.fillRect(-.12, 40.4, .24, 4.6); g.restore();
+  g.strokeStyle = '#59616b'; g.lineWidth = .12; g.strokeRect(-1.85, 40.5, 3.7, 9.5); g.fillStyle = '#3a4048'; g.beginPath(); g.moveTo(-1.85, 50); g.lineTo(1.85, 50); g.lineTo(1.1, 51.4); g.lineTo(-1.1, 51.4); g.fill(); }
+function sat(u) { // u – насколько раскрыты батареи
+  const L = .25 + 5.6 * u; for (const sg of [-1, 1]) { g.fillStyle = '#1c4a9c'; g.fillRect(sg > 0 ? 1.15 : -1.15 - L, 52.1, L, 2); g.strokeStyle = '#8fb6f0'; g.lineWidth = .05; for (let i = 0; i <= Math.ceil(L / .7); i++) { const x = sg * (1.15 + Math.min(L, i * .7)); g.beginPath(); g.moveTo(x, 52.1); g.lineTo(x, 54.1); g.stroke(); } g.strokeRect(sg > 0 ? 1.15 : -1.15 - L, 52.1, L, 2); }
+  const q = g.createLinearGradient(-1.1, 0, 1.1, 0); q.addColorStop(0, '#9a6f1c'); q.addColorStop(.35, '#f0cc66'); q.addColorStop(1, '#8a6218'); g.fillStyle = q; g.fillRect(-1.1, 51.4, 2.2, 3.4);
+  g.strokeStyle = 'rgba(90,60,10,.6)'; g.lineWidth = .05; for (let i = 1; i < 5; i++) { g.beginPath(); g.moveTo(-1.1, 51.4 + i * .68); g.lineTo(1.1, 51.4 + i * .68 + (i % 2 ? .2 : -.2)); g.stroke(); }
+  g.fillStyle = '#e9edf1'; g.beginPath(); g.moveTo(-.95, 55.9); g.quadraticCurveTo(0, 54.2, .95, 55.9); g.closePath(); g.fill(); g.strokeStyle = '#59616b'; g.lineWidth = .08; g.beginPath(); g.moveTo(0, 54.8); g.lineTo(0, 56.3); g.stroke(); }
+function fairing(side) { const p = new Path2D(); p.moveTo(0, 50.4); p.lineTo(side * 1.85, 50.4); p.lineTo(side * 2.35, 51.6); p.lineTo(side * 2.35, 57); p.bezierCurveTo(side * 2.3, 59.6, side * 1.2, 61.5, 0, 62.4); p.closePath();
+  g.save(); g.clip(p); skin(50, 63, 2.35); g.globalAlpha = st.cutA; g.fillStyle = '#1b1f25'; g.fillRect(-2.2, 50.6, 4.4, 9.6); g.restore(); g.strokeStyle = '#59616b'; g.lineWidth = .12; g.stroke(p); }
+
+// ---------- Кадр ----------
+let W = 0, H = 0, dpr = 1, last = 0;
+function resize() { dpr = Math.min(devicePixelRatio || 1, 2); const w = Math.round(cv.clientWidth * dpr), h = Math.round(cv.clientHeight * dpr); if (cv.width !== w || cv.height !== h) { cv.width = w; cv.height = h; } W = cv.clientWidth; H = cv.clientHeight; }
+function frame(ms) { requestAnimationFrame(frame); const now = ms / 1000, dt = Math.min(.05, last ? now - last : .016); last = now; resize(); if (W < 2 || H < 2) return;
+  if (st.play) { st.t += dt * st.speed; if (st.t >= TMAX) { st.t = TMAX; st.play = false; } }
+  st.cutA += ((st.cut ? 1 : 0) - st.cutA) * Math.min(1, dt * 6);
+  const t = st.t, tf = Math.max(0, t), h = at('h', tf), v = at('v', tf), th = at('th', tf), m = at('m', tf), dr = at('dr', tf), sepd = t >= EV.sep, faird = t >= EV.fair;
+  const fuel = t < 0 ? sm(T0, -12, t) : 1, ig = t < 0 ? sm(EV.ign, -.4, t) : 1, F = t < 0 ? S1.thrust * ig : at('f', tf), vac = sm(4e3, 60e3, h);
+  const s = { f1: fuel * at('p1', tf) / S1.prop, f2: fuel * at('p2', tf) / S2.prop, a1: sepd ? 0 : F / S1.thrust, a2: t >= EV.ign2 && t < EV.seco ? sm(EV.ign2, EV.ign2 + 1.5, t) : 0 };
+  const acc = t < 0 ? 1 : F / m / G0; s.sl = (t < 0 ? .02 : .1) * Math.sin(t * 2.3) * (s.f1 > 0 ? 1 : 0); s.sl2 = (t >= EV.seco ? .5 : .08) * Math.sin(t * 1.7);
+  const ds = Math.max(0, t - EV.sep), dfa = Math.max(0, t - EV.fair), dd = Math.max(0, t - EV.dep), sd = dd * .9, un = sm(2, 9, dd);
+  const viewM = mix(mix(86, 46, sm(EV.sep + 1, EV.sep + 12, t)), 24, sm(EV.seco + 2, EV.dep + 8, t)), k = H / viewM;
+  const camY = mix(mix(30, 49, sm(EV.sep + 1, EV.sep + 12, t)), 53.2 + sd, sm(EV.seco + 2, EV.dep + 8, t)), a = (90 - th) * Math.PI / 180, cx = W * .5, cy = H * .5;
+  g.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // небо, звёзды
+  const sk = sm(6e3, 70e3, h), sky = g.createLinearGradient(0, 0, 0, H); sky.addColorStop(0, rgb([38, 104, 178], [2, 3, 10], sk)); sky.addColorStop(1, rgb([176, 214, 240], [8, 12, 30], sk)); g.fillStyle = sky; g.fillRect(0, 0, W, H);
+  const sa = sm(25e3, 95e3, h); if (sa > 0) for (const [x, y, r, p] of STARS) { g.fillStyle = `rgba(255,255,255,${sa * (.5 + .5 * Math.sin(now * 1.3 + p))})`; g.fillRect(x * W, y * H * .9, r, r); }
+  // горизонт и земля
+  const padY = cy + (h + camY) * k, yh = mix(Math.min(padY, H * .8 + Math.max(0, padY - H * .8) * (1 - sm(0, 300, h))), H * .9, sm(30e3, 200e3, h)), Rv = mix(90000, 1500, Math.pow(sm(12e3, 200e3, h), .7));
+  g.save(); g.beginPath(); g.arc(cx, yh + Rv, Rv, 0, 7); g.clip(); const gk = sm(1500, 40e3, h), gg = g.createLinearGradient(0, yh, 0, H); gg.addColorStop(0, rgb([150, 150, 104], [140, 190, 235], gk)); gg.addColorStop(1, rgb([112, 116, 74], [30, 84, 160], gk)); g.fillStyle = gg; g.fillRect(0, yh - 2, W, H - yh + 4);
+  if (gk > .2) for (const [x, y, r, al] of EC) { const xx = ((x * 2600 - dr * .0009) % 2600 + 2600) % 2600 - 500; g.fillStyle = `rgba(255,255,255,${al * (gk - .2)})`; g.beginPath(); g.ellipse(xx, yh + 14 + y * (H - yh), r, r * .22, 0, 0, 7); g.fill(); } g.restore();
+  if (sk > .1) { g.strokeStyle = `rgba(140,200,255,${sk * .7})`; g.lineWidth = 3; g.beginPath(); g.arc(cx, yh + Rv, Rv + 1, 0, 7); g.stroke(); g.strokeStyle = `rgba(140,200,255,${sk * .18})`; g.lineWidth = 12; g.beginPath(); g.arc(cx, yh + Rv, Rv + 7, 0, 7); g.stroke(); }
+  for (const [x, alt, r, p] of CLOUDS) { const y = cy + (h - alt) * .28; if (y < -200 || y > H + 200 || h < 300) continue; g.fillStyle = `rgba(255,255,255,${.55 * (1 - sk)})`; for (let i = 0; i < 4; i++) { g.beginPath(); g.ellipse(((x * W * 1.6 - dr * .05) % (W * 1.6) + W * 1.6) % (W * 1.6) - W * .3 + i * r * .55, y + Math.sin(i * 2 + p * 9) * r * .12, r * (.7 + .3 * Math.sin(i + p * 5)), r * .3, 0, 0, 7); g.fill(); } }
+  // стартовый стол и башня
+  if (h < 500) { const X = x => cx + x * k, Y = y => cy + (h + camY - y) * k;
+    g.fillStyle = '#5d6168'; g.fillRect(X(-26), Y(0), 52 * k, 4 * k); g.fillStyle = '#2b2e33'; g.fillRect(X(-4), Y(0), 8 * k, 4 * k); g.fillStyle = '#787d85'; g.fillRect(X(-3.4), Y(.9), 6.8 * k, .9 * k);
+    g.strokeStyle = '#7b2a22'; g.lineWidth = Math.max(1, .25 * k); g.beginPath(); for (const x of [-10.5, -6.5]) { g.moveTo(X(x), Y(0)); g.lineTo(X(x), Y(64)); } for (let y = 0; y < 64; y += 4) { g.moveTo(X(-10.5), Y(y)); g.lineTo(X(-6.5), Y(y + 4)); g.moveTo(X(-6.5), Y(y)); g.lineTo(X(-10.5), Y(y + 4)); g.moveTo(X(-10.5), Y(y)); g.lineTo(X(-6.5), Y(y)); } g.moveTo(X(-8.5), Y(64)); g.lineTo(X(-8.5), Y(76)); g.stroke();
+    const arm = 1 - sm(-2.5, -.3, t); g.strokeStyle = '#9aa1a9'; g.lineWidth = Math.max(1.5, .5 * k); g.beginPath(); for (const y of [22, 43, 54]) { g.moveTo(X(-6.5), Y(y)); g.lineTo(X(-6.5 + 4.6 * arm), Y(y)); } g.stroke();
+    for (const x of [-60, 48, 75]) { g.strokeStyle = '#6b7078'; g.lineWidth = 1.5; g.beginPath(); g.moveTo(X(x), Y(0)); g.lineTo(X(x), Y(52)); g.stroke(); }
+    if (fuel < 1 && fuel > 0) { g.fillStyle = 'rgba(255,255,255,.35)'; for (let i = 0; i < 5; i++) { const u = (now * .3 + i / 5) % 1; g.beginPath(); g.arc(X(2.2 + u * 6), Y(30 + u * 3 + Math.sin(i) * 2), (1 + u * 2.5) * k, 0, 7); g.fill(); } }
+    for (let i = 0; i < 34; i++) { const age = t - (EV.ign + i * .32); if (age < 0 || age > 16) continue; const dir = i % 2 ? 1 : -1, u = 1 - Math.exp(-age * .45), al = .7 * (1 - age / 16); g.fillStyle = `rgba(${225 - i * 2},${222 - i * 2},${216 - i * 2},${al})`; g.beginPath(); g.arc(X(dir * (4 + 34 * u * (.5 + .5 * Math.sin(i * 7.3) ** 2))), Y(1.5 + age * (.6 + .9 * Math.abs(Math.sin(i * 3.1)))), (2.5 + 5 * Math.pow(age, .6)) * k, 0, 7); g.fill(); } }
+  // ракета
+  g.save(); g.translate(cx, cy); g.rotate(a); g.scale(k, -k); g.translate(0, -camY);
+  if (!sepd || ds < 40) { g.save(); if (sepd) { g.translate(-ds * ds * .1, -ds * ds * .35 - ds * 1.2); g.translate(0, 20); g.rotate(-ds * .035); g.translate(0, -20); } for (const x of [-1.15, 0, 1.15]) flame(x, .1, 1.15, 26 + 34 * vac, s.a1, vac, now); stage1(s); g.restore(); }
+  flame(0, 36.6, 2.1, 20, s.a2, 1, now); stage2(s);
+  if (!faird || dfa < 30) for (const sg of [-1, 1]) { g.save(); if (faird) { g.translate(sg * (dfa * 2.2 + dfa * dfa * .2), -dfa * dfa * .9); g.translate(sg * 2, 51); g.rotate(-sg * Math.min(1.2, dfa * .12)); g.translate(-sg * 2, -51); } fairing(sg); g.restore(); }
+  g.save(); g.globalAlpha = faird ? 1 : st.cutA; g.translate(0, sd); sat(un); g.restore();
+  g.restore();
+  // подписи
+  if (st.lab) { const P = (x, y) => [cx + k * (x * Math.cos(a) + (y - camY) * Math.sin(a)), cy + k * (x * Math.sin(a) - (y - camY) * Math.cos(a))], pc = n => Math.round(n * 100) + ' %', L = [];
+    if (!faird) L.push([2.35, 58, 1, 'Обтекатель']); if (st.cut || faird) L.push([-1.1, 53 + sd, -1, 'Спутник, 12 т']);
+    if (st.cut) { L.push([1.6, 47.2, 1, 'Кислород ' + pc(s.f2)], [-1.6, 42.6, -1, 'Керосин ' + pc(s.f2)]); if (!sepd) L.push([1.6, 27, 1, 'Жидкий кислород ' + pc(s.f1)], [-1.6, 10, -1, 'Керосин ' + pc(s.f1)]); } else { L.push([1.85, 45, 1, 'Вторая ступень']); if (!sepd) L.push([1.85, 22, 1, 'Первая ступень']); }
+    if (sepd || st.cut) L.push([-1.1, 38.3, -1, 'Двигатель второй ступени']); if (!sepd) L.push([1.7, 1.6, 1, 'Двигатели первой ступени'], [-1.85, 38.2, sepd || st.cut ? 1 : -1, 'Переходник']);
+    g.font = '500 13px -apple-system,Helvetica,Arial,sans-serif'; g.textBaseline = 'middle';
+    for (const [x, y, sd2, text] of L) { const [px, py] = P(x, y), [qx, qy] = P(x + sd2 * (5.5 + 60 / k), y), w = g.measureText(text).width, left = qx < px; if (py < 60 || py > H - 130 || qx < 10 || qx > W - 10) continue;
+      g.strokeStyle = 'rgba(255,216,77,.9)'; g.lineWidth = 1; g.beginPath(); g.moveTo(px, py); g.lineTo(qx, qy); g.stroke(); g.fillStyle = '#ffd84d'; g.beginPath(); g.arc(px, py, 2.5, 0, 7); g.fill();
+      g.fillStyle = 'rgba(12,12,11,.72)'; g.fillRect(left ? qx - w - 14 : qx, qy - 11, w + 14, 22); g.fillStyle = '#f2eee3'; g.textAlign = left ? 'right' : 'left'; g.fillText(text, left ? qx - 7 : qx + 7, qy); } }
+  // подпись этапа, телеметрия, шкала
+  let ph = PH[0]; for (const p of PH) if (t >= p[0]) ph = p; if ($('capT').textContent !== ph[1]) $('capT').textContent = ph[1]; const cs = ph[2](); if ($('capS').textContent !== cs) $('capS').textContent = cs;
+  $('tT').textContent = (t < 0 ? 'T−' : 'T+') + fmt(Math.abs(t), 1) + ' с'; $('tH').textContent = h < 1000 ? fmt(h) + ' м' : fmt(h / 1000, 1) + ' км'; $('tV').textContent = v < 1000 ? fmt(v) + ' м/с' : fmt(v / 1000, 2) + ' км/с';
+  $('tG').textContent = fmt(t < 0 ? 1 : acc, 1) + ' g'; $('tM').textContent = fmt((t < 0 ? S1.dry + S2.dry + PAY + FAIR + fuel * 500e3 : m) / 1000, 1) + ' т'; $('tF').textContent = fmt(F / 1000) + ' кН';
+  if (document.activeElement !== $('tl') || st.play) $('tl').value = t; $('play').textContent = st.play ? 'Пауза' : t >= TMAX - .2 ? 'Сначала' : 'Пуск'; $('play').classList.toggle('on', st.play);
+  $('stat').textContent = t < T0 + 33 ? 'заправка ускорена' : t >= EV.seco ? 'орбита 200 км' : '';
+  // карта пути
+  const mc = $('mm').getContext('2d'), mw = 500, mh = 192; mc.clearRect(0, 0, mw, mh); const MX = d => 14 + d / at('dr', TMAX) * (mw - 28), MY = hh => mh - 22 - hh / 230e3 * (mh - 40);
+  mc.fillStyle = 'rgba(90,150,220,.35)'; mc.fillRect(0, mh - 22, mw, 22); mc.strokeStyle = 'rgba(242,238,227,.35)'; mc.lineWidth = 2; mc.beginPath(); for (let i = 0; i < N; i += 20) { const x = MX(D.dr[i]), y = MY(D.h[i]); i ? mc.lineTo(x, y) : mc.moveTo(x, y); } mc.stroke();
+  mc.strokeStyle = '#ffd84d'; mc.lineWidth = 4; mc.beginPath(); for (let i = 0; i <= tf / DT; i += 10) { const x = MX(D.dr[i]), y = MY(D.h[i]); i ? mc.lineTo(x, y) : mc.moveTo(x, y); } mc.lineTo(MX(dr), MY(h)); mc.stroke(); mc.fillStyle = '#fff'; mc.beginPath(); mc.arc(MX(dr), MY(h), 7, 0, 7); mc.fill();
+  mc.fillStyle = 'rgba(242,238,227,.7)'; mc.font = '20px ui-monospace,Menlo,monospace'; mc.fillText(fmt(dr / 1000) + ' км вбок', 14, 24); mc.textAlign = 'right'; mc.fillText(fmt(h / 1000) + ' км вверх', mw - 14, 24); mc.textAlign = 'left';
+  // звук
+  if (rG) { const lv = st.play ? Math.min(1, F / S1.thrust) * (.25 + .75 * (1 - vac)) + (s.a2 > 0 ? .1 : 0) : 0; rG.gain.setTargetAtTime(lv * .7, ac.currentTime, .08); rF.frequency.setTargetAtTime(mix(420, 120, vac), ac.currentTime, .2);
+    for (const e of [EV.sep, EV.fair, EV.dep]) if (lastT < e && t >= e && t - lastT < 3) thud(e === EV.sep ? 150 : 240, .5); }
+  lastT = t;
+}
+requestAnimationFrame(frame);
+window.__r = { st, EV, at, D };
+</script>
+</body>
+</html>
